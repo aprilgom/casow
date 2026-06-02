@@ -142,6 +142,57 @@ func TestMinusExpression_shouldAppendNegatedTermsAndSubtractConstant_whenGivenEx
 	assertExpression(t, difference, []Term{NewTerm(x, 2.0), NewTerm(y, -3.0)}, -1.0)
 }
 
+func TestExpressionHelpers_shouldComposeVariableTermExpressionAndConstants_likeUpstreamOperators(t *testing.T) {
+	x := NewVariable()
+	y := NewVariable()
+	z := NewVariable()
+
+	expression := Var(x).
+		PlusExpression(ExpressionFromTerm(TermFromVariable(y).Mul(2.0))).
+		MinusExpression(Var(z)).
+		PlusConstant(8.0).
+		MinusConstant(3.0).
+		Mul(2.0).
+		Div(4.0).
+		Negate()
+
+	assertExpression(t, expression, []Term{
+		NewTerm(x, -0.5),
+		NewTerm(y, -1.0),
+		NewTerm(z, 0.5),
+	}, -2.5)
+}
+
+func TestExpressionArithmeticCompositions_shouldMatchUpstreamOperatorSemantics(t *testing.T) {
+	x := NewVariable()
+	y := NewVariable()
+	left := NewExpression([]Term{NewTerm(x, 2.0)}, 4.0)
+	right := NewExpression([]Term{NewTerm(y, -3.0)}, 5.0)
+
+	tests := []struct {
+		name         string
+		got          Expression
+		wantTerms    []Term
+		wantConstant float64
+	}{
+		{name: "neg", got: left.Negate(), wantTerms: []Term{NewTerm(x, -2.0)}, wantConstant: -4.0},
+		{name: "mul", got: left.Mul(2.0), wantTerms: []Term{NewTerm(x, 4.0)}, wantConstant: 8.0},
+		{name: "div", got: left.Div(2.0), wantTerms: []Term{NewTerm(x, 1.0)}, wantConstant: 2.0},
+		{name: "add constant", got: left.PlusConstant(2.0), wantTerms: []Term{NewTerm(x, 2.0)}, wantConstant: 6.0},
+		{name: "constant add expression", got: Const(2.0).PlusExpression(left), wantTerms: []Term{NewTerm(x, 2.0)}, wantConstant: 6.0},
+		{name: "add expression", got: left.PlusExpression(right), wantTerms: []Term{NewTerm(x, 2.0), NewTerm(y, -3.0)}, wantConstant: 9.0},
+		{name: "sub constant", got: left.MinusConstant(2.0), wantTerms: []Term{NewTerm(x, 2.0)}, wantConstant: 2.0},
+		{name: "constant sub expression", got: Const(2.0).MinusExpression(left), wantTerms: []Term{NewTerm(x, -2.0)}, wantConstant: -2.0},
+		{name: "sub expression", got: left.MinusExpression(right), wantTerms: []Term{NewTerm(x, 2.0), NewTerm(y, 3.0)}, wantConstant: -1.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertExpression(t, tt.got, tt.wantTerms, tt.wantConstant)
+		})
+	}
+}
+
 func assertExpression(t *testing.T, expression Expression, wantTerms []Term, wantConstant float64) {
 	t.Helper()
 
