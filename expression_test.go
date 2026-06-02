@@ -47,6 +47,20 @@ func TestExpressionFromVariable_shouldStoreUnitTermAndZeroConstant_whenGivenVari
 	assertExpression(t, expression, []Term{NewTerm(x, 1.0)}, 0.0)
 }
 
+func TestVar_shouldStoreUnitTermAndZeroConstant_whenGivenVariable(t *testing.T) {
+	x := NewVariable()
+
+	expression := Var(x)
+
+	assertExpression(t, expression, []Term{NewTerm(x, 1.0)}, 0.0)
+}
+
+func TestConst_shouldStoreConstantWithNoTerms_whenGivenConstant(t *testing.T) {
+	expression := Const(12.5)
+
+	assertExpression(t, expression, nil, 12.5)
+}
+
 func TestTerms_shouldReturnCopy_whenCallerMutatesReturnedSlice(t *testing.T) {
 	x := NewVariable()
 	y := NewVariable()

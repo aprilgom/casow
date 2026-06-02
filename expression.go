@@ -13,6 +13,10 @@ func ConstantExpression(constant float64) Expression {
 	return NewExpression(nil, constant)
 }
 
+func Const(value float64) Expression {
+	return ConstantExpression(value)
+}
+
 func ExpressionFromTerm(term Term) Expression {
 	return NewExpression([]Term{term}, 0.0)
 }
@@ -23,6 +27,10 @@ func ExpressionFromTerms(terms []Term) Expression {
 
 func ExpressionFromVariable(variable Variable) Expression {
 	return ExpressionFromTerm(TermFromVariable(variable))
+}
+
+func Var(variable Variable) Expression {
+	return ExpressionFromVariable(variable)
 }
 
 func (e Expression) Terms() []Term {

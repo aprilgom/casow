@@ -42,9 +42,6 @@ type element struct {
 }
 
 func main() {
-	variable := func(v casow.Variable) casow.Expression {
-		return casow.ExpressionFromVariable(v)
-	}
 	addConstraint := func(
 		solver *casow.Solver,
 		lhs casow.Expression,
@@ -62,24 +59,24 @@ func main() {
 	box2 := element{left: casow.NewVariable(), right: casow.NewVariable()}
 	solver := casow.NewSolver()
 
-	addConstraint(solver, variable(windowWidth), casow.GreaterOrEqual, casow.ConstantExpression(0), casow.Required)
-	addConstraint(solver, variable(box1.left), casow.Equal, casow.ConstantExpression(0), casow.Required)
-	addConstraint(solver, variable(box2.right), casow.Equal, variable(windowWidth), casow.Required)
-	addConstraint(solver, variable(box2.left), casow.GreaterOrEqual, variable(box1.right), casow.Required)
-	addConstraint(solver, variable(box1.left), casow.LessOrEqual, variable(box1.right), casow.Required)
-	addConstraint(solver, variable(box2.left), casow.LessOrEqual, variable(box2.right), casow.Required)
+	addConstraint(solver, casow.Var(windowWidth), casow.GreaterOrEqual, casow.Const(0), casow.Required)
+	addConstraint(solver, casow.Var(box1.left), casow.Equal, casow.Const(0), casow.Required)
+	addConstraint(solver, casow.Var(box2.right), casow.Equal, casow.Var(windowWidth), casow.Required)
+	addConstraint(solver, casow.Var(box2.left), casow.GreaterOrEqual, casow.Var(box1.right), casow.Required)
+	addConstraint(solver, casow.Var(box1.left), casow.LessOrEqual, casow.Var(box1.right), casow.Required)
+	addConstraint(solver, casow.Var(box2.left), casow.LessOrEqual, casow.Var(box2.right), casow.Required)
 	addConstraint(
 		solver,
-		variable(box1.right).MinusExpression(variable(box1.left)),
+		casow.Var(box1.right).MinusExpression(casow.Var(box1.left)),
 		casow.Equal,
-		casow.ConstantExpression(50),
+		casow.Const(50),
 		casow.Weak,
 	)
 	addConstraint(
 		solver,
-		variable(box2.right).MinusExpression(variable(box2.left)),
+		casow.Var(box2.right).MinusExpression(casow.Var(box2.left)),
 		casow.Equal,
-		casow.ConstantExpression(100),
+		casow.Const(100),
 		casow.Weak,
 	)
 
