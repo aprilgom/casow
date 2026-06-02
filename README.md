@@ -11,13 +11,13 @@ limited.
 The current module path is:
 
 ```sh
-go get casow
+go get github.com/aprilgom/casow
 ```
 
 Import it as:
 
 ```go
-import "casow"
+import "github.com/aprilgom/casow"
 ```
 
 ## Usage
@@ -33,7 +33,7 @@ package main
 import (
 	"fmt"
 
-	"casow"
+	"github.com/aprilgom/casow"
 )
 
 type element struct {
