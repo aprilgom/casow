@@ -2,6 +2,26 @@ package casow
 
 import "testing"
 
+func assertChanges(t *testing.T, changes []Change, want map[Variable]float64) {
+	t.Helper()
+
+	got := make(map[Variable]float64, len(changes))
+	for _, change := range changes {
+		if _, exists := got[change.Variable]; exists {
+			t.Fatalf("FetchChanges = %v, want no duplicate changes", changes)
+		}
+		got[change.Variable] = change.Value
+	}
+	if len(got) != len(want) {
+		t.Fatalf("FetchChanges = %v, want %v", changes, want)
+	}
+	for variable, wantValue := range want {
+		if gotValue, ok := got[variable]; !ok || gotValue != wantValue {
+			t.Fatalf("FetchChanges = %v, want %v", changes, want)
+		}
+	}
+}
+
 func TestSolverCanBeSharedAcrossGoroutinesByTypeContract(t *testing.T) {
 	done := make(chan struct{})
 
@@ -216,6 +236,75 @@ func TestSolverFetchChanges_shouldNotReportStaleZero_whenConstraintReaddedBefore
 	if !seenX {
 		t.Fatalf("FetchChanges after re-register = %v, want x change value 200", changes)
 	}
+}
+
+func TestSolverFetchChanges_shouldNotReportInitialZeroValue(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+}
+
+func TestSolverFetchChanges_shouldReportInitialNonzeroSolvedValue(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddConstraint(NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(42), Required)); err != nil {
+		t.Fatalf("AddConstraint error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 42})
+}
+
+func TestSolverFetchChanges_shouldNotReportChange_whenSuggestedValueIsUnchanged(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 42); err != nil {
+		t.Fatalf("SuggestValue(first) error = %v, want nil", err)
+	}
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 42})
+
+	if err := solver.SuggestValue(x, 42); err != nil {
+		t.Fatalf("SuggestValue(second) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+}
+
+func TestSolverFetchChanges_shouldReportAllEditVariableChangesRegardlessOfOrder(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+	z := NewVariable()
+
+	for _, variable := range []Variable{x, y, z} {
+		if err := solver.AddEditVariable(variable, Strong); err != nil {
+			t.Fatalf("AddEditVariable(%v) error = %v, want nil", variable, err)
+		}
+	}
+	if err := solver.SuggestValue(z, 30); err != nil {
+		t.Fatalf("SuggestValue(z) error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 10); err != nil {
+		t.Fatalf("SuggestValue(x) error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(y, 20); err != nil {
+		t.Fatalf("SuggestValue(y) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{
+		x: 10,
+		y: 20,
+		z: 30,
+	})
 }
 
 func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *testing.T) {
