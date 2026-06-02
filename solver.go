@@ -43,6 +43,21 @@ type Solver struct {
 	idTick             uint64
 }
 
+type solverStateSnapshot struct {
+	constraints        map[Constraint]tag
+	edits              map[Variable]editInfo
+	varData            map[Variable]varData
+	varForSymbol       map[symbol]Variable
+	publicChanges      []Change
+	changed            map[Variable]struct{}
+	shouldClearChanges bool
+	rows               map[symbol]row
+	infeasibleRows     []symbol
+	objective          row
+	artificial         *row
+	idTick             uint64
+}
+
 // Change records a variable value changed by the solver.
 type Change struct {
 	Variable Variable
@@ -68,13 +83,18 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 	if _, ok := s.constraints[constraint]; ok {
 		return ErrDuplicateConstraint
 	}
+	snapshot := s.snapshotState()
+	fail := func(err error) error {
+		s.restoreState(snapshot)
+		return err
+	}
 
 	r, constraintTag := s.createRow(constraint)
 	subject := chooseSubject(&r, constraintTag)
 
 	if subject.Kind() == symbolInvalid && allDummies(&r) {
 		if !nearZero(r.constant) {
-			return ErrUnsatisfiableConstraint
+			return fail(ErrUnsatisfiableConstraint)
 		}
 		subject = constraintTag.marker
 	}
@@ -82,10 +102,10 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 	if subject.Kind() == symbolInvalid {
 		satisfiable, err := s.addWithArtificialVariable(&r)
 		if err != nil {
-			return ErrInternalSolver
+			return fail(ErrInternalSolver)
 		}
 		if !satisfiable {
-			return ErrUnsatisfiableConstraint
+			return fail(ErrUnsatisfiableConstraint)
 		}
 	} else {
 		r.SolveForSymbol(subject)
@@ -98,7 +118,7 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 
 	s.constraints[constraint] = constraintTag
 	if err := s.optimize(optimizeObjective); err != nil {
-		return ErrInternalSolver
+		return fail(ErrInternalSolver)
 	}
 	return nil
 }
@@ -632,6 +652,51 @@ func cloneRow(r *row) row {
 	clone := newRow(r.constant)
 	maps.Copy(clone.cells, r.cells)
 	return clone
+}
+
+func (s *Solver) snapshotState() solverStateSnapshot {
+	snapshot := solverStateSnapshot{
+		constraints:        make(map[Constraint]tag, len(s.constraints)),
+		edits:              make(map[Variable]editInfo, len(s.edits)),
+		varData:            make(map[Variable]varData, len(s.varData)),
+		varForSymbol:       make(map[symbol]Variable, len(s.varForSymbol)),
+		publicChanges:      append([]Change(nil), s.publicChanges...),
+		changed:            make(map[Variable]struct{}, len(s.changed)),
+		shouldClearChanges: s.shouldClearChanges,
+		rows:               make(map[symbol]row, len(s.rows)),
+		infeasibleRows:     append([]symbol(nil), s.infeasibleRows...),
+		objective:          cloneRow(&s.objective),
+		idTick:             s.idTick,
+	}
+	maps.Copy(snapshot.constraints, s.constraints)
+	maps.Copy(snapshot.edits, s.edits)
+	maps.Copy(snapshot.varData, s.varData)
+	maps.Copy(snapshot.varForSymbol, s.varForSymbol)
+	maps.Copy(snapshot.changed, s.changed)
+	for rowSymbol, current := range s.rows {
+		rowClone := cloneRow(&current)
+		snapshot.rows[rowSymbol] = rowClone
+	}
+	if s.artificial != nil {
+		artificial := cloneRow(s.artificial)
+		snapshot.artificial = &artificial
+	}
+	return snapshot
+}
+
+func (s *Solver) restoreState(snapshot solverStateSnapshot) {
+	s.constraints = snapshot.constraints
+	s.edits = snapshot.edits
+	s.varData = snapshot.varData
+	s.varForSymbol = snapshot.varForSymbol
+	s.publicChanges = snapshot.publicChanges
+	s.changed = snapshot.changed
+	s.shouldClearChanges = snapshot.shouldClearChanges
+	s.rows = snapshot.rows
+	s.infeasibleRows = snapshot.infeasibleRows
+	s.objective = snapshot.objective
+	s.artificial = snapshot.artificial
+	s.idTick = snapshot.idTick
 }
 
 func (s *Solver) varChanged(v Variable) {

@@ -157,6 +157,52 @@ func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *test
 	}
 }
 
+func TestSolverAddConstraint_shouldNotLeakState_whenRequiredConstraintFails(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	accepted := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)
+	rejected := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(20), Required)
+
+	if err := solver.AddConstraint(accepted); err != nil {
+		t.Fatalf("AddConstraint(accepted) error = %v, want nil", err)
+	}
+	_ = solver.FetchChanges()
+
+	if err := solver.AddConstraint(rejected); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraint(rejected) error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+	if err := solver.RemoveConstraint(accepted); err != nil {
+		t.Fatalf("RemoveConstraint(accepted) error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) after removing accepted constraint = %v, want 0", got)
+	}
+	if _, ok := solver.varData[x]; ok {
+		t.Fatal("varData still tracks x after removing accepted constraint, want cleanup")
+	}
+	for _, change := range solver.FetchChanges() {
+		if change.Variable == x && change.Value == 10 {
+			t.Fatalf("FetchChanges after removing accepted constraint reported stale x = %v, want no stale 10", change.Value)
+		}
+	}
+
+	replacement := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(30), Required)
+	if err := solver.AddConstraint(replacement); err != nil {
+		t.Fatalf("AddConstraint(replacement) error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 30 {
+		t.Fatalf("GetValue(x) after replacement constraint = %v, want 30", got)
+	}
+	_ = solver.FetchChanges()
+
+	if err := solver.RemoveConstraint(replacement); err != nil {
+		t.Fatalf("RemoveConstraint(replacement) error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) after removing replacement constraint = %v, want 0", got)
+	}
+}
+
 func TestSolverAddConstraints_shouldAddAllConstraints_whenAllAreSatisfiable(t *testing.T) {
 	valueOf, updateValues := newValues()
 
