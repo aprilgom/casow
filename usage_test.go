@@ -1,6 +1,9 @@
 package casow
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestUsageTwoHorizontalBoxes_shouldUpdateLayout_whenWindowWidthChanges(t *testing.T) {
 	type element struct {
@@ -11,6 +14,12 @@ func TestUsageTwoHorizontalBoxes_shouldUpdateLayout_whenWindowWidthChanges(t *te
 	assertEqual := func(name string, got, want float64) {
 		t.Helper()
 		if got != want {
+			t.Fatalf("%s = %v, want %v", name, got, want)
+		}
+	}
+	assertNear := func(name string, got, want float64) {
+		t.Helper()
+		if math.Abs(got-want) > 1e-9 {
 			t.Fatalf("%s = %v, want %v", name, got, want)
 		}
 	}
@@ -69,4 +78,20 @@ func TestUsageTwoHorizontalBoxes_shouldUpdateLayout_whenWindowWidthChanges(t *te
 	if valueOf(windowWidth) < 0 {
 		t.Fatalf("windowWidth = %v, want nonnegative", valueOf(windowWidth))
 	}
+
+	if err := solver.AddConstraint(NewConstraint(
+		Var(box1.right).MinusExpression(Var(box1.left)).Div(50),
+		Equal,
+		Var(box2.right).MinusExpression(Var(box2.left)).Div(100),
+		Medium,
+	)); err != nil {
+		t.Fatalf("AddConstraint(ratio) error = %v, want nil", err)
+	}
+	updateValues(solver.FetchChanges())
+
+	assertNear("box1.right after ratio constraint", valueOf(box1.right), 25)
+	assertNear("box2.left after ratio constraint", valueOf(box2.left), 25)
+	assertNear("windowWidth after ratio constraint", valueOf(windowWidth), 75)
+	assertNear("box1.left after ratio constraint", valueOf(box1.left), 0)
+	assertNear("box2.right after ratio constraint", valueOf(box2.right), 75)
 }
