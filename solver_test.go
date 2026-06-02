@@ -279,6 +279,35 @@ func TestSolverRemoveConstraint_shouldRejectUnknownConstraint(t *testing.T) {
 	}
 }
 
+func TestSolverHasConstraint_shouldReportConstraintMembership(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	constraint := NewConstraint(x, Equal, 10, Required)
+
+	if solver.HasConstraint(constraint) {
+		t.Fatal("HasConstraint before AddConstraint = true, want false")
+	}
+	if err := solver.AddConstraint(constraint); err != nil {
+		t.Fatalf("AddConstraint error = %v, want nil", err)
+	}
+	if !solver.HasConstraint(constraint) {
+		t.Fatal("HasConstraint after AddConstraint = false, want true")
+	}
+	if err := solver.RemoveConstraint(constraint); err != nil {
+		t.Fatalf("RemoveConstraint error = %v, want nil", err)
+	}
+	if solver.HasConstraint(constraint) {
+		t.Fatal("HasConstraint after RemoveConstraint = true, want false")
+	}
+	if err := solver.AddConstraint(constraint); err != nil {
+		t.Fatalf("AddConstraint(second) error = %v, want nil", err)
+	}
+	solver.Reset()
+	if solver.HasConstraint(constraint) {
+		t.Fatal("HasConstraint after Reset = true, want false")
+	}
+}
+
 func TestSolverFetchChanges_shouldReportZeroOnce_whenLastConstraintRemoved(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
