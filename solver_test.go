@@ -233,6 +233,9 @@ func TestSolverAddConstraint_shouldPreserveEditWorkflowAndChanges_whenRequiredCo
 	if err := solver.AddConstraint(rejected); err != ErrUnsatisfiableConstraint {
 		t.Fatalf("AddConstraint(rejected) error = %v, want %v", err, ErrUnsatisfiableConstraint)
 	}
+	if err := solver.RemoveConstraint(rejected); err != ErrUnknownConstraint {
+		t.Fatalf("RemoveConstraint(rejected) error = %v, want %v", err, ErrUnknownConstraint)
+	}
 	if got := solver.GetValue(x); got != 25 {
 		t.Fatalf("GetValue(x) after failed constraint = %v, want 25", got)
 	}
