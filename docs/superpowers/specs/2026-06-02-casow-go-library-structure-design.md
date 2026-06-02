@@ -15,7 +15,7 @@ Use a single root package named `casow`.
 Go users should be able to import one package and access the core solver concepts directly:
 
 ```go
-import "casow"
+import "github.com/aprilgom/casow"
 ```
 
 This keeps the early port easy to compare against `kasuari` while avoiding unnecessary package fragmentation. Cassowary concepts such as variables, expressions, terms, constraints, strengths, relations, and the solver are tightly coupled, so splitting them into separate public packages would add import friction without improving the first milestone.
