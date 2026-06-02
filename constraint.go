@@ -18,8 +18,8 @@ type Constraint struct {
 
 // NewConstraint creates a constraint equivalent to lhs op rhs with strength.
 //
-// lhs and rhs may be Expression, Variable, Term, float64, float32, or any
-// integer type. Unsupported values panic.
+// lhs and rhs may be Expression, Variable, Term, float64, float32, or a
+// built-in integer type. Unsupported values panic.
 func NewConstraint(lhs any, op RelationalOperator, rhs any, strength Strength) Constraint {
 	lhsExpression := constraintExpression(lhs)
 	rhsExpression := constraintExpression(rhs)
