@@ -203,6 +203,61 @@ func TestSolverAddConstraint_shouldNotLeakState_whenRequiredConstraintFails(t *t
 	}
 }
 
+func TestSolverAddConstraint_shouldPreserveEditWorkflowAndChanges_whenRequiredConstraintFails(t *testing.T) {
+	valueOf, updateValues := newValues()
+
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddConstraint(NewConstraint(ExpressionFromVariable(x), GreaterOrEqual, ConstantExpression(0), Required)); err != nil {
+		t.Fatalf("AddConstraint(x >= 0) error = %v, want nil", err)
+	}
+	if err := solver.AddConstraint(NewConstraint(ExpressionFromVariable(x), LessOrEqual, ConstantExpression(100), Required)); err != nil {
+		t.Fatalf("AddConstraint(x <= 100) error = %v, want nil", err)
+	}
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable(x) error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 25); err != nil {
+		t.Fatalf("SuggestValue(x, 25) error = %v, want nil", err)
+	}
+	updateValues(solver.FetchChanges())
+	if got := valueOf(x); got != 25 {
+		t.Fatalf("valueOf(x) after first suggestion = %v, want 25", got)
+	}
+	if changes := solver.FetchChanges(); len(changes) != 0 {
+		t.Fatalf("FetchChanges before failed constraint = %v, want none", changes)
+	}
+
+	rejected := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(200), Required)
+	if err := solver.AddConstraint(rejected); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraint(rejected) error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+	if got := solver.GetValue(x); got != 25 {
+		t.Fatalf("GetValue(x) after failed constraint = %v, want 25", got)
+	}
+	if changes := solver.FetchChanges(); len(changes) != 0 {
+		t.Fatalf("FetchChanges after failed constraint = %v, want none", changes)
+	}
+	if !solver.HasEditVariable(x) {
+		t.Fatal("HasEditVariable(x) after failed constraint = false, want true")
+	}
+
+	if err := solver.SuggestValue(x, 75); err != nil {
+		t.Fatalf("SuggestValue(x, 75) after failed constraint error = %v, want nil", err)
+	}
+	updateValues(solver.FetchChanges())
+	if got := valueOf(x); got != 75 {
+		t.Fatalf("valueOf(x) after second suggestion = %v, want 75", got)
+	}
+	if err := solver.RemoveEditVariable(x); err != nil {
+		t.Fatalf("RemoveEditVariable(x) after failed constraint error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 50); err != ErrUnknownEditVariable {
+		t.Fatalf("SuggestValue(x, 50) after remove error = %v, want %v", err, ErrUnknownEditVariable)
+	}
+}
+
 func TestSolverAddConstraints_shouldAddAllConstraints_whenAllAreSatisfiable(t *testing.T) {
 	valueOf, updateValues := newValues()
 
