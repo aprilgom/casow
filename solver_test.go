@@ -41,3 +41,52 @@ func TestSolverRemoveConstraint_shouldAllowReplacementConstraint_whenConstraintR
 		t.Fatalf("valueOf(val) after replacement constraint = %v, want 0", got)
 	}
 }
+
+func TestSolverSuggestValue_shouldUpdateEditVariable_whenEditVariableAdded(t *testing.T) {
+	valueOf, updateValues := newValues()
+
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 42); err != nil {
+		t.Fatalf("SuggestValue error = %v, want nil", err)
+	}
+	updateValues(solver.FetchChanges())
+
+	if got := valueOf(x); got != 42 {
+		t.Fatalf("valueOf(x) = %v, want 42", got)
+	}
+}
+
+func TestSolverAddEditVariable_shouldRejectRequiredStrength(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Required); err != ErrBadRequiredStrength {
+		t.Fatalf("AddEditVariable error = %v, want %v", err, ErrBadRequiredStrength)
+	}
+}
+
+func TestSolverAddEditVariable_shouldRejectDuplicateEditVariable(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable(first) error = %v, want nil", err)
+	}
+	if err := solver.AddEditVariable(x, Strong); err != ErrDuplicateEditVariable {
+		t.Fatalf("AddEditVariable(second) error = %v, want %v", err, ErrDuplicateEditVariable)
+	}
+}
+
+func TestSolverSuggestValue_shouldRejectUnknownEditVariable(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.SuggestValue(x, 42); err != ErrUnknownEditVariable {
+		t.Fatalf("SuggestValue error = %v, want %v", err, ErrUnknownEditVariable)
+	}
+}

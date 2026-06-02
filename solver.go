@@ -15,6 +15,12 @@ type varData struct {
 	count  int
 }
 
+type editInfo struct {
+	tag        tag
+	constraint Constraint
+	constant   float64
+}
+
 type optimizeTarget int
 
 const (
@@ -24,6 +30,7 @@ const (
 
 type Solver struct {
 	constraints        map[Constraint]tag
+	edits              map[Variable]editInfo
 	varData            map[Variable]varData
 	varForSymbol       map[symbol]Variable
 	publicChanges      []Change
@@ -44,6 +51,7 @@ type Change struct {
 func NewSolver() *Solver {
 	return &Solver{
 		constraints:  make(map[Constraint]tag),
+		edits:        make(map[Variable]editInfo),
 		varData:      make(map[Variable]varData),
 		varForSymbol: make(map[symbol]Variable),
 		changed:      make(map[Variable]struct{}),
@@ -132,6 +140,88 @@ func (s *Solver) RemoveConstraint(constraint Constraint) error {
 		} else {
 			s.varData[v] = data
 		}
+	}
+	return nil
+}
+
+func (s *Solver) AddEditVariable(variable Variable, strength Strength) error {
+	if _, ok := s.edits[variable]; ok {
+		return ErrDuplicateEditVariable
+	}
+	if strength == Required {
+		return ErrBadRequiredStrength
+	}
+
+	constraint := NewConstraint(ExpressionFromVariable(variable), Equal, ConstantExpression(0), strength)
+	if err := s.AddConstraint(constraint); err != nil {
+		return err
+	}
+
+	s.edits[variable] = editInfo{
+		tag:        s.constraints[constraint],
+		constraint: constraint,
+		constant:   0,
+	}
+	return nil
+}
+
+func (s *Solver) RemoveEditVariable(variable Variable) error {
+	info, ok := s.edits[variable]
+	if !ok {
+		return ErrUnknownEditVariable
+	}
+	delete(s.edits, variable)
+
+	if err := s.RemoveConstraint(info.constraint); err != nil {
+		if err == ErrUnknownConstraint {
+			return ErrInternalSolver
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *Solver) HasEditVariable(variable Variable) bool {
+	_, ok := s.edits[variable]
+	return ok
+}
+
+func (s *Solver) SuggestValue(variable Variable, value float64) error {
+	info, ok := s.edits[variable]
+	if !ok {
+		return ErrUnknownEditVariable
+	}
+
+	delta := value - info.constant
+	info.constant = value
+	s.edits[variable] = info
+
+	if r, ok := s.rows[info.tag.marker]; ok {
+		if r.AddConstant(-delta) < 0 {
+			s.infeasibleRows = append(s.infeasibleRows, info.tag.marker)
+		}
+		s.rows[info.tag.marker] = r
+	} else if r, ok := s.rows[info.tag.other]; ok {
+		if r.AddConstant(delta) < 0 {
+			s.infeasibleRows = append(s.infeasibleRows, info.tag.other)
+		}
+		s.rows[info.tag.other] = r
+	} else {
+		for rowSymbol, current := range s.rows {
+			coefficient := current.CoefficientFor(info.tag.marker)
+			diff := delta * coefficient
+			if diff != 0 && rowSymbol.Kind() == symbolExternal {
+				s.varChanged(s.varForSymbol[rowSymbol])
+			}
+			if coefficient != 0 && current.AddConstant(diff) < 0 && rowSymbol.Kind() != symbolExternal {
+				s.infeasibleRows = append(s.infeasibleRows, rowSymbol)
+			}
+			s.rows[rowSymbol] = current
+		}
+	}
+
+	if err := s.dualOptimize(); err != nil {
+		return ErrInternalSolver
 	}
 	return nil
 }
@@ -331,6 +421,33 @@ func (s *Solver) optimize(target optimizeTarget) error {
 	}
 }
 
+func (s *Solver) dualOptimize() error {
+	for len(s.infeasibleRows) > 0 {
+		last := len(s.infeasibleRows) - 1
+		leaving := s.infeasibleRows[last]
+		s.infeasibleRows = s.infeasibleRows[:last]
+
+		r, ok := s.rows[leaving]
+		if !ok || r.constant >= 0 {
+			continue
+		}
+		delete(s.rows, leaving)
+
+		entering := s.getDualEnteringSymbol(&r)
+		if entering.Kind() == symbolInvalid {
+			return ErrInternalSolver
+		}
+
+		r.SolveForSymbols(leaving, entering)
+		s.substitute(entering, &r)
+		if entering.Kind() == symbolExternal && r.constant != 0 {
+			s.varChanged(s.varForSymbol[entering])
+		}
+		s.rows[entering] = r
+	}
+	return nil
+}
+
 func getEnteringSymbol(objective *row) symbol {
 	for candidate, value := range objective.cells {
 		if candidate.Kind() != symbolDummy && value < 0 {
@@ -338,6 +455,21 @@ func getEnteringSymbol(objective *row) symbol {
 		}
 	}
 	return invalidSymbol()
+}
+
+func (s *Solver) getDualEnteringSymbol(r *row) symbol {
+	ratio := math.Inf(1)
+	entering := invalidSymbol()
+	for candidate, value := range r.cells {
+		if value > 0 && candidate.Kind() != symbolDummy {
+			tempRatio := s.objective.CoefficientFor(candidate) / value
+			if tempRatio < ratio {
+				ratio = tempRatio
+				entering = candidate
+			}
+		}
+	}
+	return entering
 }
 
 func anyPivotableSymbol(r *row) symbol {
