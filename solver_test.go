@@ -62,6 +62,120 @@ func TestSolverRemoveConstraint_shouldAllowReplacementConstraint_whenConstraintR
 	}
 }
 
+func TestSolverRemoveConstraint_shouldKeepCompoundSystemStable_whenRemovingNonBasicMarkerConstraint(t *testing.T) {
+	valueOf, updateValues := newValues()
+
+	solver := NewSolver()
+	left := NewVariable()
+	middle := NewVariable()
+	right := NewVariable()
+
+	leftFixed := NewConstraint(ExpressionFromVariable(left), Equal, ConstantExpression(100), Required)
+	rightTracksLeft := NewConstraint(ExpressionFromVariable(right), Equal, ExpressionFromVariable(left).PlusConstant(60), Required)
+	middleTracksRight := NewConstraint(ExpressionFromVariable(middle), Equal, ExpressionFromVariable(right).MinusConstant(10), Required)
+	leftStay := NewConstraint(ExpressionFromVariable(left), Equal, ConstantExpression(0), Weak)
+	middleStay := NewConstraint(ExpressionFromVariable(middle), Equal, ConstantExpression(0), Weak)
+	rightStay := NewConstraint(ExpressionFromVariable(right), Equal, ConstantExpression(0), Weak)
+	removableMiddle := NewConstraint(ExpressionFromVariable(middle), LessOrEqual, ExpressionFromVariable(left).PlusConstant(30), Strong)
+
+	for _, entry := range []struct {
+		name       string
+		constraint Constraint
+	}{
+		{name: "leftFixed", constraint: leftFixed},
+		{name: "rightTracksLeft", constraint: rightTracksLeft},
+		{name: "middleTracksRight", constraint: middleTracksRight},
+		{name: "leftStay", constraint: leftStay},
+		{name: "middleStay", constraint: middleStay},
+		{name: "rightStay", constraint: rightStay},
+		{name: "removableMiddle", constraint: removableMiddle},
+	} {
+		if err := solver.AddConstraint(entry.constraint); err != nil {
+			t.Fatalf("AddConstraint(%s) error = %v, want nil", entry.name, err)
+		}
+	}
+
+	removableTag := solver.constraints[removableMiddle]
+	if _, markerIsBasic := solver.rows[removableTag.marker]; markerIsBasic {
+		t.Fatal("test setup did not exercise marker/leaving-row pivot path: removable marker is basic")
+	}
+
+	updateValues(solver.FetchChanges())
+	if got := [3]float64{valueOf(left), valueOf(middle), valueOf(right)}; got != [3]float64{100, 150, 160} {
+		t.Fatalf("values before RemoveConstraint = %v, want [100 150 160]", got)
+	}
+
+	if err := solver.RemoveConstraint(removableMiddle); err != nil {
+		t.Fatalf("RemoveConstraint(removableMiddle) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+	if got := [3]float64{solver.GetValue(left), solver.GetValue(middle), solver.GetValue(right)}; got != [3]float64{100, 150, 160} {
+		t.Fatalf("GetValue after RemoveConstraint = %v, want [100 150 160]", got)
+	}
+
+	replacementMiddle := NewConstraint(ExpressionFromVariable(middle), Equal, ExpressionFromVariable(right).MinusConstant(10), Strong)
+	if err := solver.AddConstraint(replacementMiddle); err != nil {
+		t.Fatalf("AddConstraint(replacementMiddle) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+	if got := [3]float64{solver.GetValue(left), solver.GetValue(middle), solver.GetValue(right)}; got != [3]float64{100, 150, 160} {
+		t.Fatalf("GetValue after replacement constraint = %v, want [100 150 160]", got)
+	}
+}
+
+func TestSolverRemoveConstraint_shouldExposeAlternativeSoftConstraintWithoutStaleChanges(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+
+	xBoundsLow := NewConstraint(ExpressionFromVariable(x), GreaterOrEqual, ConstantExpression(0), Required)
+	xBoundsHigh := NewConstraint(ExpressionFromVariable(x), LessOrEqual, ConstantExpression(100), Required)
+	yTracksX := NewConstraint(ExpressionFromVariable(y), Equal, ExpressionFromVariable(x).PlusConstant(5), Required)
+	weakXStay := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Weak)
+	weakYStay := NewConstraint(ExpressionFromVariable(y), Equal, ConstantExpression(0), Weak)
+	strongXStay := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(40), Strong)
+
+	for _, entry := range []struct {
+		name       string
+		constraint Constraint
+	}{
+		{name: "xBoundsLow", constraint: xBoundsLow},
+		{name: "xBoundsHigh", constraint: xBoundsHigh},
+		{name: "yTracksX", constraint: yTracksX},
+		{name: "weakXStay", constraint: weakXStay},
+		{name: "weakYStay", constraint: weakYStay},
+		{name: "strongXStay", constraint: strongXStay},
+	} {
+		if err := solver.AddConstraint(entry.constraint); err != nil {
+			t.Fatalf("AddConstraint(%s) error = %v, want nil", entry.name, err)
+		}
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 40, y: 45})
+
+	if err := solver.RemoveConstraint(strongXStay); err != nil {
+		t.Fatalf("RemoveConstraint(strongXStay) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 10, y: 15})
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+	if got := [2]float64{solver.GetValue(x), solver.GetValue(y)}; got != [2]float64{10, 15} {
+		t.Fatalf("GetValue after RemoveConstraint = %v, want [10 15]", got)
+	}
+
+	replacementXStay := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(70), Strong)
+	if err := solver.AddConstraint(replacementXStay); err != nil {
+		t.Fatalf("AddConstraint(replacementXStay) error = %v, want nil", err)
+	}
+
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 70, y: 75})
+	if got := [2]float64{solver.GetValue(x), solver.GetValue(y)}; got != [2]float64{70, 75} {
+		t.Fatalf("GetValue after replacement constraint = %v, want [70 75]", got)
+	}
+}
+
 func TestSolverGetValue_shouldReturnZero_whenVariableIsUnknown(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
