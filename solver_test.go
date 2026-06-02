@@ -145,7 +145,7 @@ func TestSolverRemoveConstraint_shouldRejectUnknownConstraint(t *testing.T) {
 	}
 }
 
-func TestSolverFetchChanges_shouldReportZero_whenLastConstraintRemoved(t *testing.T) {
+func TestSolverFetchChanges_shouldReportZeroOnce_whenLastConstraintRemoved(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
 	constraint := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(100), Required)
@@ -163,12 +163,59 @@ func TestSolverFetchChanges_shouldReportZero_whenLastConstraintRemoved(t *testin
 	}
 
 	changes := solver.FetchChanges()
+	zeroChanges := 0
 	for _, change := range changes {
 		if change.Variable == x && change.Value == 0 {
-			return
+			zeroChanges++
 		}
 	}
-	t.Fatalf("FetchChanges after RemoveConstraint = %v, want Change{Variable: x, Value: 0}", changes)
+	if zeroChanges != 1 {
+		t.Fatalf("FetchChanges after RemoveConstraint = %v, want exactly one Change{Variable: x, Value: 0}", changes)
+	}
+
+	changes = solver.FetchChanges()
+	for _, change := range changes {
+		if change.Variable == x {
+			t.Fatalf("second FetchChanges after RemoveConstraint = %v, want no change for x", changes)
+		}
+	}
+}
+
+func TestSolverFetchChanges_shouldNotReportStaleZero_whenConstraintReaddedBeforeFetch(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	first := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(100), Required)
+	second := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(200), Required)
+
+	if err := solver.AddConstraint(first); err != nil {
+		t.Fatalf("AddConstraint(first) error = %v, want nil", err)
+	}
+	_ = solver.FetchChanges()
+
+	if err := solver.RemoveConstraint(first); err != nil {
+		t.Fatalf("RemoveConstraint(first) error = %v, want nil", err)
+	}
+	if err := solver.AddConstraint(second); err != nil {
+		t.Fatalf("AddConstraint(second) error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 200 {
+		t.Fatalf("GetValue(x) after re-register = %v, want 200", got)
+	}
+
+	changes := solver.FetchChanges()
+	seenX := false
+	for _, change := range changes {
+		if change.Variable != x {
+			continue
+		}
+		seenX = true
+		if change.Value != 200 {
+			t.Fatalf("FetchChanges after re-register = %v, want x change value 200 and no stale zero", changes)
+		}
+	}
+	if !seenX {
+		t.Fatalf("FetchChanges after re-register = %v, want x change value 200", changes)
+	}
 }
 
 func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *testing.T) {
