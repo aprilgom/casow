@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "go is required for pre-commit checks." >&2
+  exit 1
+fi
+
+if ! command -v golangci-lint >/dev/null 2>&1; then
+  echo "golangci-lint is required for pre-commit checks." >&2
+  echo "Install it from https://golangci-lint.run/welcome/install/ and retry." >&2
+  exit 1
+fi
+
+echo "Running go fix ./..."
+go fix ./...
+
+if ! git diff --quiet; then
+  echo "go fix changed files. Review and stage the changes, then commit again." >&2
+  git diff --name-only >&2
+  exit 1
+fi
+
+echo "Running golangci-lint run"
+golangci-lint run
