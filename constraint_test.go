@@ -51,6 +51,12 @@ func TestNewConstraint_shouldCanonicalizeRightHandSideRoles_whenGivenConstantVar
 			wantConstant: 6.0,
 		},
 		{
+			name:         "integer constant",
+			rhs:          4,
+			wantTerms:    []Term{NewTerm(x, 1.0)},
+			wantConstant: 6.0,
+		},
+		{
 			name:         "variable",
 			rhs:          y,
 			wantTerms:    []Term{NewTerm(x, 1.0), NewTerm(y, -1.0)},
@@ -83,6 +89,16 @@ func TestNewConstraint_shouldCanonicalizeRightHandSideRoles_whenGivenConstantVar
 			}
 		})
 	}
+}
+
+func TestNewConstraint_shouldPanic_whenGivenUnsupportedSideType(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewConstraint did not panic for unsupported input type")
+		}
+	}()
+
+	_ = NewConstraint(Var(NewVariable()), Equal, "10", Required)
 }
 
 func TestNewConstraint_shouldCanonicalizeLeftHandSideRoles_whenGivenConstantVariableTermOrExpression(t *testing.T) {
