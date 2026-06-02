@@ -17,8 +17,10 @@ type Constraint struct {
 }
 
 // NewConstraint creates a constraint equivalent to lhs op rhs with strength.
-func NewConstraint(lhs Expression, op RelationalOperator, rhs Expression, strength Strength) Constraint {
-	expression := lhs.MinusExpression(rhs)
+func NewConstraint(lhs any, op RelationalOperator, rhs any, strength Strength) Constraint {
+	lhsExpression := constraintExpression(lhs)
+	rhsExpression := constraintExpression(rhs)
+	expression := lhsExpression.MinusExpression(rhsExpression)
 	return Constraint{
 		id:         nextConstraintID.Add(1),
 		expression: &expression,
@@ -43,4 +45,21 @@ func (c Constraint) Operator() RelationalOperator {
 // Strength returns the constraint strength.
 func (c Constraint) Strength() Strength {
 	return c.strength
+}
+
+func constraintExpression(value any) Expression {
+	switch typed := value.(type) {
+	case Expression:
+		return typed
+	case Variable:
+		return ExpressionFromVariable(typed)
+	case Term:
+		return ExpressionFromTerm(typed)
+	case float64:
+		return ConstantExpression(typed)
+	case float32:
+		return ConstantExpression(float64(typed))
+	default:
+		panic("unsupported constraint expression value")
+	}
 }

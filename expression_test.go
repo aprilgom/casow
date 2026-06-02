@@ -142,6 +142,27 @@ func TestMinusExpression_shouldAppendNegatedTermsAndSubtractConstant_whenGivenEx
 	assertExpression(t, difference, []Term{NewTerm(x, 2.0), NewTerm(y, -3.0)}, -1.0)
 }
 
+func TestExpressionHelpers_shouldComposeVariableTermExpressionAndConstants_likeUpstreamOperators(t *testing.T) {
+	x := NewVariable()
+	y := NewVariable()
+	z := NewVariable()
+
+	expression := Var(x).
+		PlusExpression(ExpressionFromTerm(TermFromVariable(y).Mul(2.0))).
+		MinusExpression(Var(z)).
+		PlusConstant(8.0).
+		MinusConstant(3.0).
+		Mul(2.0).
+		Div(4.0).
+		Negate()
+
+	assertExpression(t, expression, []Term{
+		NewTerm(x, -0.5),
+		NewTerm(y, -1.0),
+		NewTerm(z, 0.5),
+	}, -2.5)
+}
+
 func assertExpression(t *testing.T, expression Expression, wantTerms []Term, wantConstant float64) {
 	t.Helper()
 
