@@ -78,17 +78,20 @@ func TestSolverRemoveConstraint_shouldKeepCompoundSystemStable_whenRemovingNonBa
 	rightStay := NewConstraint(ExpressionFromVariable(right), Equal, ConstantExpression(0), Weak)
 	removableMiddle := NewConstraint(ExpressionFromVariable(middle), LessOrEqual, ExpressionFromVariable(left).PlusConstant(30), Strong)
 
-	for name, constraint := range map[string]Constraint{
-		"leftFixed":         leftFixed,
-		"rightTracksLeft":   rightTracksLeft,
-		"middleTracksRight": middleTracksRight,
-		"leftStay":          leftStay,
-		"middleStay":        middleStay,
-		"rightStay":         rightStay,
-		"removableMiddle":   removableMiddle,
+	for _, entry := range []struct {
+		name       string
+		constraint Constraint
+	}{
+		{name: "leftFixed", constraint: leftFixed},
+		{name: "rightTracksLeft", constraint: rightTracksLeft},
+		{name: "middleTracksRight", constraint: middleTracksRight},
+		{name: "leftStay", constraint: leftStay},
+		{name: "middleStay", constraint: middleStay},
+		{name: "rightStay", constraint: rightStay},
+		{name: "removableMiddle", constraint: removableMiddle},
 	} {
-		if err := solver.AddConstraint(constraint); err != nil {
-			t.Fatalf("AddConstraint(%s) error = %v, want nil", name, err)
+		if err := solver.AddConstraint(entry.constraint); err != nil {
+			t.Fatalf("AddConstraint(%s) error = %v, want nil", entry.name, err)
 		}
 	}
 
@@ -134,16 +137,19 @@ func TestSolverRemoveConstraint_shouldExposeAlternativeSoftConstraintWithoutStal
 	weakYStay := NewConstraint(ExpressionFromVariable(y), Equal, ConstantExpression(0), Weak)
 	strongXStay := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(40), Strong)
 
-	for name, constraint := range map[string]Constraint{
-		"xBoundsLow":  xBoundsLow,
-		"xBoundsHigh": xBoundsHigh,
-		"yTracksX":    yTracksX,
-		"weakXStay":   weakXStay,
-		"weakYStay":   weakYStay,
-		"strongXStay": strongXStay,
+	for _, entry := range []struct {
+		name       string
+		constraint Constraint
+	}{
+		{name: "xBoundsLow", constraint: xBoundsLow},
+		{name: "xBoundsHigh", constraint: xBoundsHigh},
+		{name: "yTracksX", constraint: yTracksX},
+		{name: "weakXStay", constraint: weakXStay},
+		{name: "weakYStay", constraint: weakYStay},
+		{name: "strongXStay", constraint: strongXStay},
 	} {
-		if err := solver.AddConstraint(constraint); err != nil {
-			t.Fatalf("AddConstraint(%s) error = %v, want nil", name, err)
+		if err := solver.AddConstraint(entry.constraint); err != nil {
+			t.Fatalf("AddConstraint(%s) error = %v, want nil", entry.name, err)
 		}
 	}
 
