@@ -43,11 +43,13 @@ type Solver struct {
 	idTick             uint64
 }
 
+// Change records a variable value changed by the solver.
 type Change struct {
 	Variable Variable
 	Value    float64
 }
 
+// NewSolver creates an empty constraint solver.
 func NewSolver() *Solver {
 	return &Solver{
 		constraints:  make(map[Constraint]tag),
@@ -61,6 +63,7 @@ func NewSolver() *Solver {
 	}
 }
 
+// AddConstraint adds a constraint to the solver.
 func (s *Solver) AddConstraint(constraint Constraint) error {
 	if _, ok := s.constraints[constraint]; ok {
 		return ErrDuplicateConstraint
@@ -100,6 +103,10 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 	return nil
 }
 
+// AddConstraints adds constraints sequentially.
+//
+// If a constraint fails, the error is returned and constraints added earlier in
+// the call remain in the solver.
 func (s *Solver) AddConstraints(constraints ...Constraint) error {
 	for _, constraint := range constraints {
 		if err := s.AddConstraint(constraint); err != nil {
@@ -109,6 +116,7 @@ func (s *Solver) AddConstraints(constraints ...Constraint) error {
 	return nil
 }
 
+// RemoveConstraint removes a previously added constraint.
 func (s *Solver) RemoveConstraint(constraint Constraint) error {
 	constraintTag, ok := s.constraints[constraint]
 	if !ok {
@@ -153,6 +161,7 @@ func (s *Solver) RemoveConstraint(constraint Constraint) error {
 	return nil
 }
 
+// AddEditVariable marks variable as editable with strength.
 func (s *Solver) AddEditVariable(variable Variable, strength Strength) error {
 	if _, ok := s.edits[variable]; ok {
 		return ErrDuplicateEditVariable
@@ -174,6 +183,7 @@ func (s *Solver) AddEditVariable(variable Variable, strength Strength) error {
 	return nil
 }
 
+// RemoveEditVariable removes variable from the edit set.
 func (s *Solver) RemoveEditVariable(variable Variable) error {
 	info, ok := s.edits[variable]
 	if !ok {
@@ -190,11 +200,13 @@ func (s *Solver) RemoveEditVariable(variable Variable) error {
 	return nil
 }
 
+// HasEditVariable reports whether variable is currently editable.
 func (s *Solver) HasEditVariable(variable Variable) bool {
 	_, ok := s.edits[variable]
 	return ok
 }
 
+// GetValue returns the current solved value for variable.
 func (s *Solver) GetValue(variable Variable) float64 {
 	data, ok := s.varData[variable]
 	if !ok {
@@ -206,6 +218,7 @@ func (s *Solver) GetValue(variable Variable) float64 {
 	return 0
 }
 
+// Reset clears all solver state.
 func (s *Solver) Reset() {
 	clear(s.constraints)
 	clear(s.edits)
@@ -221,6 +234,7 @@ func (s *Solver) Reset() {
 	s.idTick = 1
 }
 
+// SuggestValue suggests a new value for an edit variable.
 func (s *Solver) SuggestValue(variable Variable, value float64) error {
 	info, ok := s.edits[variable]
 	if !ok {
@@ -261,6 +275,7 @@ func (s *Solver) SuggestValue(variable Variable, value float64) error {
 	return nil
 }
 
+// FetchChanges returns variable changes since the previous fetch.
 func (s *Solver) FetchChanges() []Change {
 	if s.shouldClearChanges {
 		clear(s.changed)
