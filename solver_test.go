@@ -462,6 +462,70 @@ func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *test
 	}
 }
 
+func TestSolverAddConstraint_shouldNotRegisterRejectedConstraint_whenRequiredConstraintFails(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+	acceptedX := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)
+	acceptedY := NewConstraint(ExpressionFromVariable(y), Equal, ExpressionFromVariable(x).PlusConstant(5), Required)
+	rejected := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(20), Required)
+
+	if err := solver.AddConstraint(acceptedX); err != nil {
+		t.Fatalf("AddConstraint(acceptedX) error = %v, want nil", err)
+	}
+	if err := solver.AddConstraint(acceptedY); err != nil {
+		t.Fatalf("AddConstraint(acceptedY) error = %v, want nil", err)
+	}
+
+	if err := solver.AddConstraint(rejected); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraint(rejected) error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+
+	if solver.HasConstraint(rejected) {
+		t.Fatal("HasConstraint(rejected) after failed AddConstraint = true, want false")
+	}
+	if !solver.HasConstraint(acceptedX) {
+		t.Fatal("HasConstraint(acceptedX) after failed AddConstraint = false, want true")
+	}
+	if !solver.HasConstraint(acceptedY) {
+		t.Fatal("HasConstraint(acceptedY) after failed AddConstraint = false, want true")
+	}
+	if err := solver.RemoveConstraint(rejected); err != ErrUnknownConstraint {
+		t.Fatalf("RemoveConstraint(rejected) error = %v, want %v", err, ErrUnknownConstraint)
+	}
+	if got := [2]float64{solver.GetValue(x), solver.GetValue(y)}; got != [2]float64{10, 15} {
+		t.Fatalf("GetValue after failed AddConstraint = %v, want [10 15]", got)
+	}
+}
+
+func TestSolverAddConstraint_shouldPreserveSolvedValuesAndFetchLifecycle_whenRequiredConstraintFails(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+	xFixed := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)
+	yTracksX := NewConstraint(ExpressionFromVariable(y), Equal, ExpressionFromVariable(x).PlusConstant(5), Required)
+	rejected := NewConstraint(ExpressionFromVariable(y), Equal, ConstantExpression(99), Required)
+
+	if err := solver.AddConstraint(xFixed); err != nil {
+		t.Fatalf("AddConstraint(xFixed) error = %v, want nil", err)
+	}
+	if err := solver.AddConstraint(yTracksX); err != nil {
+		t.Fatalf("AddConstraint(yTracksX) error = %v, want nil", err)
+	}
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 10, y: 15})
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+
+	if err := solver.AddConstraint(rejected); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraint(rejected) error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+
+	if got := [2]float64{solver.GetValue(x), solver.GetValue(y)}; got != [2]float64{10, 15} {
+		t.Fatalf("GetValue after failed AddConstraint = %v, want [10 15]", got)
+	}
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
+}
+
 func TestSolverAddConstraint_shouldNotLeakState_whenRequiredConstraintFails(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
@@ -606,6 +670,42 @@ func TestSolverAddConstraints_shouldReturnFirstErrorWithoutRollback_whenConstrai
 	if got := valueOf(x); got != 10 {
 		t.Fatalf("valueOf(x) after failed batch = %v, want 10", got)
 	}
+}
+
+func TestSolverAddConstraints_shouldKeepEarlierSuccessfulConstraintsAndRejectLaterConstraint_whenBatchPartiallyFails(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+	z := NewVariable()
+	xFixed := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)
+	yTracksX := NewConstraint(ExpressionFromVariable(y), Equal, ExpressionFromVariable(x).PlusConstant(20), Required)
+	zTracksY := NewConstraint(ExpressionFromVariable(z), Equal, ExpressionFromVariable(y).MinusConstant(5), Required)
+	rejected := NewConstraint(ExpressionFromVariable(z), LessOrEqual, ConstantExpression(0), Required)
+
+	if err := solver.AddConstraints(xFixed, yTracksX, zTracksY, rejected); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraints error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+
+	for _, entry := range []struct {
+		name       string
+		constraint Constraint
+	}{
+		{name: "xFixed", constraint: xFixed},
+		{name: "yTracksX", constraint: yTracksX},
+		{name: "zTracksY", constraint: zTracksY},
+	} {
+		if !solver.HasConstraint(entry.constraint) {
+			t.Fatalf("HasConstraint(%s) after failed batch = false, want true", entry.name)
+		}
+	}
+	if solver.HasConstraint(rejected) {
+		t.Fatal("HasConstraint(rejected) after failed batch = true, want false")
+	}
+	if got := [3]float64{solver.GetValue(x), solver.GetValue(y), solver.GetValue(z)}; got != [3]float64{10, 30, 25} {
+		t.Fatalf("GetValue after failed batch = %v, want [10 30 25]", got)
+	}
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{x: 10, y: 30, z: 25})
+	assertChanges(t, solver.FetchChanges(), map[Variable]float64{})
 }
 
 func TestSolverSuggestValue_shouldUpdateEditVariable_whenEditVariableAdded(t *testing.T) {
