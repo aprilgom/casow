@@ -14,7 +14,7 @@ type Variable struct {
 
 // NewVariable creates a new unique solver variable.
 func NewVariable() Variable {
-	return Variable{id: nextVariableID.Add(1) - 1}
+	return Variable{id: nextVariableID.Add(1)}
 }
 
 // ID returns the variable's stable process-local identifier.

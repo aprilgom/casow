@@ -2,6 +2,20 @@ package casow
 
 import "testing"
 
+func TestNewConstraint_shouldNotEqualZeroValueConstraint(t *testing.T) {
+	var zero Constraint
+	nextConstraintID.Store(0)
+
+	created := NewConstraint(Var(NewVariable()), Equal, Const(1), Required)
+
+	if created == zero {
+		t.Fatalf("NewConstraint() = zero value constraint: %v", created)
+	}
+	if created.id == 0 {
+		t.Fatalf("NewConstraint() ID = 0, want non-zero")
+	}
+}
+
 func TestNewConstraint_shouldStoreCanonicalExpressionOperatorAndStrength_whenGivenExpressions(t *testing.T) {
 	x := NewVariable()
 	y := NewVariable()

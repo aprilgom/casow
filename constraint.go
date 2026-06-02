@@ -20,7 +20,7 @@ type Constraint struct {
 func NewConstraint(lhs Expression, op RelationalOperator, rhs Expression, strength Strength) Constraint {
 	expression := lhs.MinusExpression(rhs)
 	return Constraint{
-		id:         nextConstraintID.Add(1) - 1,
+		id:         nextConstraintID.Add(1),
 		expression: &expression,
 		operator:   op,
 		strength:   strength,

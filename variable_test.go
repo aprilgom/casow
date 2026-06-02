@@ -2,6 +2,20 @@ package casow
 
 import "testing"
 
+func TestNewVariable_shouldNotEqualZeroValueVariable(t *testing.T) {
+	var zero Variable
+	nextVariableID.Store(0)
+
+	created := NewVariable()
+
+	if created == zero {
+		t.Fatalf("NewVariable() = zero value variable: %v", created)
+	}
+	if created.ID() == 0 {
+		t.Fatalf("NewVariable().ID() = 0, want non-zero")
+	}
+}
+
 func TestNewVariableReturnsUniqueIdentities(t *testing.T) {
 	first := NewVariable()
 	second := NewVariable()
