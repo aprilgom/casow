@@ -1,6 +1,40 @@
 package casow
 
-type Solver struct{}
+import "maps"
+
+import "math"
+
+type tag struct {
+	marker symbol
+	other  symbol
+}
+
+type varData struct {
+	value  float64
+	symbol symbol
+	count  int
+}
+
+type optimizeTarget int
+
+const (
+	optimizeObjective optimizeTarget = iota
+	optimizeArtificial
+)
+
+type Solver struct {
+	constraints        map[Constraint]tag
+	varData            map[Variable]varData
+	varForSymbol       map[symbol]Variable
+	publicChanges      []Change
+	changed            map[Variable]struct{}
+	shouldClearChanges bool
+	rows               map[symbol]row
+	infeasibleRows     []symbol
+	objective          row
+	artificial         *row
+	idTick             uint64
+}
 
 type Change struct {
 	Variable Variable
@@ -8,17 +42,420 @@ type Change struct {
 }
 
 func NewSolver() *Solver {
-	return &Solver{}
+	return &Solver{
+		constraints:  make(map[Constraint]tag),
+		varData:      make(map[Variable]varData),
+		varForSymbol: make(map[symbol]Variable),
+		changed:      make(map[Variable]struct{}),
+		rows:         make(map[symbol]row),
+		objective:    newRow(0),
+		idTick:       1,
+	}
 }
 
 func (s *Solver) AddConstraint(constraint Constraint) error {
-	return ErrInternalSolver
+	if _, ok := s.constraints[constraint]; ok {
+		return ErrDuplicateConstraint
+	}
+
+	r, constraintTag := s.createRow(constraint)
+	subject := chooseSubject(&r, constraintTag)
+
+	if subject.Kind() == symbolInvalid && allDummies(&r) {
+		if !nearZero(r.constant) {
+			return ErrUnsatisfiableConstraint
+		}
+		subject = constraintTag.marker
+	}
+
+	if subject.Kind() == symbolInvalid {
+		satisfiable, err := s.addWithArtificialVariable(&r)
+		if err != nil {
+			return ErrInternalSolver
+		}
+		if !satisfiable {
+			return ErrUnsatisfiableConstraint
+		}
+	} else {
+		r.SolveForSymbol(subject)
+		s.substitute(subject, &r)
+		if subject.Kind() == symbolExternal && r.constant != 0 {
+			s.varChanged(s.varForSymbol[subject])
+		}
+		s.rows[subject] = r
+	}
+
+	s.constraints[constraint] = constraintTag
+	if err := s.optimize(optimizeObjective); err != nil {
+		return ErrInternalSolver
+	}
+	return nil
 }
 
 func (s *Solver) RemoveConstraint(constraint Constraint) error {
-	return ErrInternalSolver
+	constraintTag, ok := s.constraints[constraint]
+	if !ok {
+		return ErrUnknownConstraint
+	}
+	delete(s.constraints, constraint)
+
+	s.removeConstraintEffects(constraint, constraintTag)
+
+	if _, ok := s.rows[constraintTag.marker]; ok {
+		delete(s.rows, constraintTag.marker)
+	} else {
+		leaving, r, ok := s.getMarkerLeavingRow(constraintTag.marker)
+		if !ok {
+			return ErrInternalSolver
+		}
+		r.SolveForSymbols(leaving, constraintTag.marker)
+		s.substitute(constraintTag.marker, &r)
+	}
+
+	if err := s.optimize(optimizeObjective); err != nil {
+		return ErrInternalSolver
+	}
+
+	for _, term := range constraint.Expression().Terms() {
+		if nearZero(term.Coefficient()) {
+			continue
+		}
+		v := term.Var()
+		data, ok := s.varData[v]
+		if !ok {
+			continue
+		}
+		data.count--
+		if data.count == 0 {
+			delete(s.varForSymbol, data.symbol)
+			delete(s.varData, v)
+		} else {
+			s.varData[v] = data
+		}
+	}
+	return nil
 }
 
 func (s *Solver) FetchChanges() []Change {
-	return nil
+	if s.shouldClearChanges {
+		clear(s.changed)
+		s.shouldClearChanges = false
+	} else {
+		s.shouldClearChanges = true
+	}
+
+	s.publicChanges = s.publicChanges[:0]
+	for v := range s.changed {
+		data, ok := s.varData[v]
+		if !ok {
+			continue
+		}
+		newValue := 0.0
+		if r, ok := s.rows[data.symbol]; ok {
+			newValue = r.constant
+		}
+		if data.value != newValue {
+			s.publicChanges = append(s.publicChanges, Change{Variable: v, Value: newValue})
+			data.value = newValue
+			s.varData[v] = data
+		}
+	}
+
+	changes := make([]Change, len(s.publicChanges))
+	copy(changes, s.publicChanges)
+	return changes
+}
+
+func (s *Solver) getVarSymbol(v Variable) symbol {
+	data, ok := s.varData[v]
+	if !ok {
+		newSymbol := newSymbol(s.idTick, symbolExternal)
+		s.idTick++
+		s.varForSymbol[newSymbol] = v
+		data = varData{value: math.NaN(), symbol: newSymbol}
+	}
+	data.count++
+	s.varData[v] = data
+	return data.symbol
+}
+
+func (s *Solver) createRow(constraint Constraint) (row, tag) {
+	expr := constraint.Expression()
+	r := newRow(expr.Constant())
+
+	for _, term := range expr.Terms() {
+		if nearZero(term.Coefficient()) {
+			continue
+		}
+		termSymbol := s.getVarSymbol(term.Var())
+		if other, ok := s.rows[termSymbol]; ok {
+			r.InsertRow(&other, term.Coefficient())
+		} else {
+			r.InsertSymbol(termSymbol, term.Coefficient())
+		}
+	}
+
+	constraintTag := tag{marker: invalidSymbol(), other: invalidSymbol()}
+	switch constraint.Operator() {
+	case LessOrEqual, GreaterOrEqual:
+		coefficient := 1.0
+		if constraint.Operator() == GreaterOrEqual {
+			coefficient = -1.0
+		}
+		slack := newSymbol(s.idTick, symbolSlack)
+		s.idTick++
+		r.InsertSymbol(slack, coefficient)
+		constraintTag.marker = slack
+		if constraint.Strength().Less(Required) {
+			errSymbol := newSymbol(s.idTick, symbolError)
+			s.idTick++
+			r.InsertSymbol(errSymbol, -coefficient)
+			s.objective.InsertSymbol(errSymbol, constraint.Strength().Value())
+			constraintTag.other = errSymbol
+		}
+	case Equal:
+		if constraint.Strength().Less(Required) {
+			errPlus := newSymbol(s.idTick, symbolError)
+			s.idTick++
+			errMinus := newSymbol(s.idTick, symbolError)
+			s.idTick++
+			r.InsertSymbol(errPlus, -1)
+			r.InsertSymbol(errMinus, 1)
+			s.objective.InsertSymbol(errPlus, constraint.Strength().Value())
+			s.objective.InsertSymbol(errMinus, constraint.Strength().Value())
+			constraintTag = tag{marker: errPlus, other: errMinus}
+		} else {
+			dummy := newSymbol(s.idTick, symbolDummy)
+			s.idTick++
+			r.InsertSymbol(dummy, 1)
+			constraintTag.marker = dummy
+		}
+	}
+
+	if r.constant < 0 {
+		r.ReverseSign()
+	}
+	return r, constraintTag
+}
+
+func chooseSubject(r *row, constraintTag tag) symbol {
+	for candidate := range r.cells {
+		if candidate.Kind() == symbolExternal {
+			return candidate
+		}
+	}
+	if (constraintTag.marker.Kind() == symbolSlack || constraintTag.marker.Kind() == symbolError) &&
+		r.CoefficientFor(constraintTag.marker) < 0 {
+		return constraintTag.marker
+	}
+	if (constraintTag.other.Kind() == symbolSlack || constraintTag.other.Kind() == symbolError) &&
+		r.CoefficientFor(constraintTag.other) < 0 {
+		return constraintTag.other
+	}
+	return invalidSymbol()
+}
+
+func (s *Solver) addWithArtificialVariable(r *row) (bool, error) {
+	art := newSymbol(s.idTick, symbolSlack)
+	s.idTick++
+	s.rows[art] = cloneRow(r)
+	artificial := cloneRow(r)
+	s.artificial = &artificial
+
+	if err := s.optimize(optimizeArtificial); err != nil {
+		s.artificial = nil
+		return false, err
+	}
+	success := nearZero(s.artificial.constant)
+	s.artificial = nil
+
+	if artRow, ok := s.rows[art]; ok {
+		delete(s.rows, art)
+		if len(artRow.cells) == 0 {
+			return success, nil
+		}
+		entering := anyPivotableSymbol(&artRow)
+		if entering.Kind() == symbolInvalid {
+			return false, nil
+		}
+		artRow.SolveForSymbols(art, entering)
+		s.substitute(entering, &artRow)
+		s.rows[entering] = artRow
+	}
+
+	for key, current := range s.rows {
+		current.RemoveSymbol(art)
+		s.rows[key] = current
+	}
+	s.objective.RemoveSymbol(art)
+	return success, nil
+}
+
+func (s *Solver) substitute(substitution symbol, substituteRow *row) {
+	for rowSymbol, current := range s.rows {
+		constantChanged := current.Substitute(substitution, substituteRow)
+		if rowSymbol.Kind() == symbolExternal && constantChanged {
+			s.varChanged(s.varForSymbol[rowSymbol])
+		}
+		if rowSymbol.Kind() != symbolExternal && current.constant < 0 {
+			s.infeasibleRows = append(s.infeasibleRows, rowSymbol)
+		}
+		s.rows[rowSymbol] = current
+	}
+	s.objective.Substitute(substitution, substituteRow)
+	if s.artificial != nil {
+		s.artificial.Substitute(substitution, substituteRow)
+	}
+}
+
+func (s *Solver) optimize(target optimizeTarget) error {
+	for {
+		objective := &s.objective
+		if target == optimizeArtificial {
+			objective = s.artificial
+		}
+		entering := getEnteringSymbol(objective)
+		if entering.Kind() == symbolInvalid {
+			return nil
+		}
+		leaving, r, ok := s.getLeavingRow(entering)
+		if !ok {
+			return ErrInternalSolver
+		}
+		r.SolveForSymbols(leaving, entering)
+		s.substitute(entering, &r)
+		if entering.Kind() == symbolExternal && r.constant != 0 {
+			s.varChanged(s.varForSymbol[entering])
+		}
+		s.rows[entering] = r
+	}
+}
+
+func getEnteringSymbol(objective *row) symbol {
+	for candidate, value := range objective.cells {
+		if candidate.Kind() != symbolDummy && value < 0 {
+			return candidate
+		}
+	}
+	return invalidSymbol()
+}
+
+func anyPivotableSymbol(r *row) symbol {
+	for candidate := range r.cells {
+		if candidate.Kind() == symbolSlack || candidate.Kind() == symbolError {
+			return candidate
+		}
+	}
+	return invalidSymbol()
+}
+
+func (s *Solver) getLeavingRow(entering symbol) (symbol, row, bool) {
+	ratio := math.Inf(1)
+	found := invalidSymbol()
+	for rowSymbol, r := range s.rows {
+		if rowSymbol.Kind() == symbolExternal {
+			continue
+		}
+		temp := r.CoefficientFor(entering)
+		if temp < 0 {
+			tempRatio := -r.constant / temp
+			if tempRatio < ratio {
+				ratio = tempRatio
+				found = rowSymbol
+			}
+		}
+	}
+	if found.Kind() == symbolInvalid {
+		return invalidSymbol(), row{}, false
+	}
+	r := s.rows[found]
+	delete(s.rows, found)
+	return found, r, true
+}
+
+func (s *Solver) getMarkerLeavingRow(marker symbol) (symbol, row, bool) {
+	r1 := math.Inf(1)
+	r2 := math.Inf(1)
+	first := invalidSymbol()
+	second := invalidSymbol()
+	third := invalidSymbol()
+
+	for rowSymbol, r := range s.rows {
+		coefficient := r.CoefficientFor(marker)
+		if coefficient == 0 {
+			continue
+		}
+		if rowSymbol.Kind() == symbolExternal {
+			third = rowSymbol
+		} else if coefficient < 0 {
+			ratio := -r.constant / coefficient
+			if ratio < r1 {
+				r1 = ratio
+				first = rowSymbol
+			}
+		} else {
+			ratio := r.constant / coefficient
+			if ratio < r2 {
+				r2 = ratio
+				second = rowSymbol
+			}
+		}
+	}
+
+	found := first
+	if found.Kind() == symbolInvalid {
+		found = second
+	}
+	if found.Kind() == symbolInvalid {
+		found = third
+	}
+	if found.Kind() == symbolInvalid {
+		return invalidSymbol(), row{}, false
+	}
+	if found.Kind() == symbolExternal && s.rows[found].constant != 0 {
+		s.varChanged(s.varForSymbol[found])
+	}
+	r := s.rows[found]
+	delete(s.rows, found)
+	return found, r, true
+}
+
+func (s *Solver) removeConstraintEffects(constraint Constraint, constraintTag tag) {
+	if constraintTag.marker.Kind() == symbolError {
+		s.removeMarkerEffects(constraintTag.marker, constraint.Strength().Value())
+	}
+	if constraintTag.other.Kind() == symbolError {
+		s.removeMarkerEffects(constraintTag.other, constraint.Strength().Value())
+	}
+}
+
+func (s *Solver) removeMarkerEffects(marker symbol, strength float64) {
+	if r, ok := s.rows[marker]; ok {
+		s.objective.InsertRow(&r, -strength)
+	} else {
+		s.objective.InsertSymbol(marker, -strength)
+	}
+}
+
+func allDummies(r *row) bool {
+	for candidate := range r.cells {
+		if candidate.Kind() != symbolDummy {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneRow(r *row) row {
+	clone := newRow(r.constant)
+	maps.Copy(clone.cells, r.cells)
+	return clone
+}
+
+func (s *Solver) varChanged(v Variable) {
+	if s.shouldClearChanges {
+		clear(s.changed)
+		s.shouldClearChanges = false
+	}
+	s.changed[v] = struct{}{}
 }
