@@ -95,6 +95,28 @@ Rust 문법과 Go API는 1:1 문법 포팅이 불가능하다. 남은 포팅 판
 
 - read-only/docs 작업이라 병렬 가능
 
+#### API parity matrix
+
+기준 upstream export는 `/Users/aprilgom/casow/kasuari/src/lib.rs`의 `pub use` 항목이다. Go 쪽은 Rust 문법 sugar를 그대로 흉내내기보다 명시적 생성자/메서드로 같은 solver 의미를 고정한다.
+
+| 영역 | upstream kasuari public API | Go casow 대응 | 상태 | 포팅 판단 |
+| --- | --- | --- | --- | --- |
+| `Variable` | `Variable::new()`, `Default`, copy/hash/eq/order/debug traits, arithmetic operator impls | `NewVariable()`, `Variable.ID()`, 값 타입 equality/map key, `Var(variable)`/`TermFromVariable(variable)` | 대응됨 | Rust 연산자 impl은 Go helper API로 대체. 정렬/debug trait 자체는 Go 언어 기능/표현 차이로 별도 포팅 없음. |
+| `Term` | `Term::new`, `Term::from_variable`, public `variable`/`coefficient`, `From<Variable>`, arithmetic operator impls | `NewTerm`, `TermFromVariable`, `Var()`, `Coefficient()`, `Mul`, `Div`, `Negate` | 대응됨 | 필드는 캡슐화하고 accessor 제공. Rust `From`/operator impl은 명시 메서드로 대체. |
+| `Expression` | `Expression::new`, `from_constant`, `from_term`, `from_terms`, `from_variable`, `From<f64/Variable/Term>`, `FromIterator<Term>`, arithmetic operator impls | `NewExpression`, `ConstantExpression`/`Const`, `ExpressionFromTerm`, `ExpressionFromTerms`, `ExpressionFromVariable`/`Var`, `Terms()`, `Constant()`, `Negate`, `Mul`, `Div`, `PlusConstant`, `MinusConstant`, `PlusExpression`, `MinusExpression` | 대응됨 | Go는 `From`/iterator/operator overloading이 없으므로 constructor와 fluent arithmetic method를 사용. `Terms()`는 caller mutation 방지를 위해 copy 반환. |
+| `Constraint` | `Constraint::new(expression, op, strength)` as canonical `expr op 0`, `expr()`, `op()`, `strength()`, identity-based hash/eq via `Arc`; `PartialConstraint` for `lhs \|REL\| rhs` syntax | `NewConstraint(lhs any, op, rhs any, strength)` canonicalizes `lhs-rhs`, `Expression()`, `Operator()`, `Strength()`, per-constraint id identity | 대응됨 | Go API accepts `Expression`, `Variable`, `Term`, float/integer constants on either side. `PartialConstraint` is Rust syntax-only and intentionally excluded. |
+| `Relation` | `RelationalOperator::{LessOrEqual, Equal, GreaterOrEqual}`, `Display`; `WeightedRelation::{EQ, LE, GE}` and `From<WeightedRelation>` | `RelationalOperator` constants `LessOrEqual`, `Equal`, `GreaterOrEqual`, `String()`; `WeightedRelation` plus `EQ`, `LE`, `GE`, `Operator()`, `Strength()` | 대응됨 | WeightedRelation is retained as a Go value helper, but constraints usually use `NewConstraint(lhs, Equal, rhs, strength)` directly. |
+| `Strength` | `Strength::{REQUIRED, STRONG, MEDIUM, WEAK, ZERO}`, `new`, `create`, `value`, add/sub/mul/div methods and operators, ordering traits | `Required`, `Strong`, `Medium`, `Weak`, `Zero`; `NewStrength`, `CreateStrength`, `Value`, `Add`, `Sub`, `Mul`, `Div`, `Compare`, `Less` | 대응됨 | Constants use Go exported variables because `Strength` is a struct value. Operator traits map to explicit methods. |
+| `Solver` | `Solver::new`, `Default`, `add_constraint`, `add_constraints`, `remove_constraint`, `has_constraint`, `add_edit_variable`, `remove_edit_variable`, `has_edit_variable`, `suggest_value`, `fetch_changes` | `NewSolver`, pointer receiver methods `AddConstraint`, `AddConstraints`, `RemoveConstraint`, `HasConstraint`, `AddEditVariable`, `RemoveEditVariable`, `HasEditVariable`, `SuggestValue`, `FetchChanges`, plus `GetValue`, `Reset` | 대응됨 + Go additions | `FetchChanges` returns copied `[]Change` instead of borrowed `&[(Variable, f64)]`. `GetValue` and `Reset` are Go convenience additions covered by current tests. |
+| `Errors` | enum error types: `AddConstraintError`, `RemoveConstraintError`, `AddEditVariableError`, `RemoveEditVariableError`, `SuggestValueError`, `InternalSolverError` | sentinel errors: `ErrDuplicateConstraint`, `ErrUnsatisfiableConstraint`, `ErrUnknownConstraint`, `ErrDuplicateEditVariable`, `ErrUnknownEditVariable`, `ErrBadRequiredStrength`, `ErrInternalSolver` | 대응됨 | Go collapses typed enum families into sentinel `error` values. Future ports should preserve `errors.Is`-friendly sentinel behavior if wrapping is added. |
+| Rust-only exclusions | `#![no_std]`, `alloc`, cargo features such as `portable-atomic`/`document-features`, Rust operator traits, `From`/`Default`/`Display`/ordering traits, auto traits like `Send`/`Sync` | standard Go runtime, `sync/atomic`, exported constructors/methods, `String()` where useful, Go value-copy/map-key semantics | 제외/Go equivalent | Do not chase 1:1 syntax parity. Track only behavior visible to Go callers and tests. |
+
+미래 포팅 결정 원칙:
+
+- upstream에 새 exported item이 생기면 먼저 이 표에 Go 대응/제외 이유를 추가한다.
+- solver behavior는 Rust API 이름보다 observable behavior 테스트를 우선한다.
+- Rust 전용 문법 sugar는 Go API를 복잡하게 만들지 않는 경우에만 helper로 추가한다.
+
 ## 추천 병렬 배치
 
 첫 배치:
