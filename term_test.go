@@ -65,6 +65,35 @@ func TestTermArithmeticReturnsTransformedTerms(t *testing.T) {
 	}
 }
 
+func TestTermArithmeticCompositions_shouldMatchUpstreamOperatorTables(t *testing.T) {
+	left := NewVariable()
+	right := NewVariable()
+	leftTerm := TermFromVariable(left)
+	rightTerm := TermFromVariable(right)
+
+	tests := []struct {
+		name         string
+		got          Expression
+		wantTerms    []Term
+		wantConstant float64
+	}{
+		{name: "add constant", got: ExpressionFromTerm(leftTerm).PlusConstant(2.0), wantTerms: []Term{leftTerm}, wantConstant: 2.0},
+		{name: "constant add term", got: Const(2.0).PlusExpression(ExpressionFromTerm(leftTerm)), wantTerms: []Term{leftTerm}, wantConstant: 2.0},
+		{name: "add term", got: ExpressionFromTerm(leftTerm).PlusExpression(ExpressionFromTerm(rightTerm)), wantTerms: []Term{leftTerm, rightTerm}, wantConstant: 0.0},
+		{name: "add expression", got: ExpressionFromTerm(leftTerm).PlusExpression(NewExpression([]Term{rightTerm}, 1.0)), wantTerms: []Term{leftTerm, rightTerm}, wantConstant: 1.0},
+		{name: "sub constant", got: ExpressionFromTerm(leftTerm).MinusConstant(2.0), wantTerms: []Term{leftTerm}, wantConstant: -2.0},
+		{name: "constant sub term", got: Const(2.0).MinusExpression(ExpressionFromTerm(leftTerm)), wantTerms: []Term{leftTerm.Negate()}, wantConstant: 2.0},
+		{name: "sub term", got: ExpressionFromTerm(leftTerm).MinusExpression(ExpressionFromTerm(rightTerm)), wantTerms: []Term{leftTerm, rightTerm.Negate()}, wantConstant: 0.0},
+		{name: "sub expression", got: ExpressionFromTerm(leftTerm).MinusExpression(NewExpression([]Term{rightTerm}, 1.0)), wantTerms: []Term{leftTerm, rightTerm.Negate()}, wantConstant: -1.0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertExpression(t, tt.got, tt.wantTerms, tt.wantConstant)
+		})
+	}
+}
+
 func TestTermChainedArithmeticPreservesVariableIdentity(t *testing.T) {
 	variable := NewVariable()
 
