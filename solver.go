@@ -195,6 +195,32 @@ func (s *Solver) HasEditVariable(variable Variable) bool {
 	return ok
 }
 
+func (s *Solver) GetValue(variable Variable) float64 {
+	data, ok := s.varData[variable]
+	if !ok {
+		return 0
+	}
+	if r, ok := s.rows[data.symbol]; ok {
+		return r.constant
+	}
+	return 0
+}
+
+func (s *Solver) Reset() {
+	clear(s.constraints)
+	clear(s.edits)
+	clear(s.varData)
+	clear(s.varForSymbol)
+	clear(s.changed)
+	clear(s.rows)
+	s.publicChanges = s.publicChanges[:0]
+	s.infeasibleRows = s.infeasibleRows[:0]
+	s.shouldClearChanges = false
+	s.objective = newRow(0)
+	s.artificial = nil
+	s.idTick = 1
+}
+
 func (s *Solver) SuggestValue(variable Variable, value float64) error {
 	info, ok := s.edits[variable]
 	if !ok {

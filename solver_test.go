@@ -42,6 +42,86 @@ func TestSolverRemoveConstraint_shouldAllowReplacementConstraint_whenConstraintR
 	}
 }
 
+func TestSolverGetValue_shouldReturnZero_whenVariableIsUnknown(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) = %v, want 0", got)
+	}
+}
+
+func TestSolverGetValue_shouldReturnSolvedValue_whenConstraintAdded(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddConstraint(NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)); err != nil {
+		t.Fatalf("AddConstraint error = %v, want nil", err)
+	}
+
+	if got := solver.GetValue(x); got != 10 {
+		t.Fatalf("GetValue(x) = %v, want 10", got)
+	}
+}
+
+func TestSolverGetValue_shouldReturnSuggestedValue_whenEditVariableSuggested(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 42); err != nil {
+		t.Fatalf("SuggestValue error = %v, want nil", err)
+	}
+
+	if got := solver.GetValue(x); got != 42 {
+		t.Fatalf("GetValue(x) = %v, want 42", got)
+	}
+}
+
+func TestSolverReset_shouldClearConstraintsEditsAndValues(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+	constraint := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required)
+
+	if err := solver.AddConstraint(constraint); err != nil {
+		t.Fatalf("AddConstraint error = %v, want nil", err)
+	}
+	if err := solver.AddEditVariable(y, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(y, 20); err != nil {
+		t.Fatalf("SuggestValue(first) error = %v, want nil", err)
+	}
+
+	solver.Reset()
+
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) after Reset = %v, want 0", got)
+	}
+	if got := solver.GetValue(y); got != 0 {
+		t.Fatalf("GetValue(y) after Reset = %v, want 0", got)
+	}
+	if solver.HasEditVariable(y) {
+		t.Fatal("HasEditVariable(y) after Reset = true, want false")
+	}
+	if err := solver.RemoveConstraint(constraint); err != ErrUnknownConstraint {
+		t.Fatalf("RemoveConstraint after Reset error = %v, want %v", err, ErrUnknownConstraint)
+	}
+	if err := solver.SuggestValue(y, 30); err != ErrUnknownEditVariable {
+		t.Fatalf("SuggestValue after Reset error = %v, want %v", err, ErrUnknownEditVariable)
+	}
+
+	if err := solver.AddConstraint(NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(15), Required)); err != nil {
+		t.Fatalf("AddConstraint after Reset error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 15 {
+		t.Fatalf("GetValue(x) after new constraint = %v, want 15", got)
+	}
+}
+
 func TestSolverAddConstraint_shouldRejectDuplicateConstraint(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
