@@ -88,6 +88,14 @@ The exact method names can be refined during implementation, but the API should 
 
 ## Testing Strategy
 
+Port tests before porting implementation code. Each implementation slice should follow this order:
+
+1. Translate the relevant Rust test or Rust unit-test expectation into a Go `*_test.go` test.
+2. Run the Go test and verify that it fails for the expected missing behavior.
+3. Port only the minimum Go code needed for that test.
+4. Run the targeted test and then `go test ./...`.
+5. Refactor only after the tests are green.
+
 Start with small unit tests for value types before porting full solver behavior:
 
 1. `Strength` constants and comparison behavior.
