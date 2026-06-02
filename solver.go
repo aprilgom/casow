@@ -100,6 +100,15 @@ func (s *Solver) AddConstraint(constraint Constraint) error {
 	return nil
 }
 
+func (s *Solver) AddConstraints(constraints ...Constraint) error {
+	for _, constraint := range constraints {
+		if err := s.AddConstraint(constraint); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Solver) RemoveConstraint(constraint Constraint) error {
 	constraintTag, ok := s.constraints[constraint]
 	if !ok {

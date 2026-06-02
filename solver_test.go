@@ -77,6 +77,48 @@ func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *test
 	}
 }
 
+func TestSolverAddConstraints_shouldAddAllConstraints_whenAllAreSatisfiable(t *testing.T) {
+	valueOf, updateValues := newValues()
+
+	solver := NewSolver()
+	x := NewVariable()
+	y := NewVariable()
+
+	if err := solver.AddConstraints(
+		NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required),
+		NewConstraint(ExpressionFromVariable(y), Equal, ConstantExpression(20), Required),
+	); err != nil {
+		t.Fatalf("AddConstraints error = %v, want nil", err)
+	}
+	updateValues(solver.FetchChanges())
+
+	if got := valueOf(x); got != 10 {
+		t.Fatalf("valueOf(x) = %v, want 10", got)
+	}
+	if got := valueOf(y); got != 20 {
+		t.Fatalf("valueOf(y) = %v, want 20", got)
+	}
+}
+
+func TestSolverAddConstraints_shouldReturnFirstErrorWithoutRollback_whenConstraintFails(t *testing.T) {
+	valueOf, updateValues := newValues()
+
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddConstraints(
+		NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(10), Required),
+		NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(20), Required),
+	); err != ErrUnsatisfiableConstraint {
+		t.Fatalf("AddConstraints error = %v, want %v", err, ErrUnsatisfiableConstraint)
+	}
+	updateValues(solver.FetchChanges())
+
+	if got := valueOf(x); got != 10 {
+		t.Fatalf("valueOf(x) after failed batch = %v, want 10", got)
+	}
+}
+
 func TestSolverSuggestValue_shouldUpdateEditVariable_whenEditVariableAdded(t *testing.T) {
 	valueOf, updateValues := newValues()
 

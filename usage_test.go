@@ -8,12 +8,6 @@ func TestUsageTwoHorizontalBoxes_shouldUpdateLayout_whenWindowWidthChanges(t *te
 		right Variable
 	}
 
-	addConstraint := func(solver *Solver, lhs Expression, op RelationalOperator, rhs Expression, strength Strength) {
-		t.Helper()
-		if err := solver.AddConstraint(NewConstraint(lhs, op, rhs, strength)); err != nil {
-			t.Fatalf("AddConstraint error = %v, want nil", err)
-		}
-	}
 	assertEqual := func(name string, got, want float64) {
 		t.Helper()
 		if got != want {
@@ -27,14 +21,18 @@ func TestUsageTwoHorizontalBoxes_shouldUpdateLayout_whenWindowWidthChanges(t *te
 	box2 := element{left: NewVariable(), right: NewVariable()}
 	solver := NewSolver()
 
-	addConstraint(solver, Var(windowWidth), GreaterOrEqual, Const(0), Required)
-	addConstraint(solver, Var(box1.left), Equal, Const(0), Required)
-	addConstraint(solver, Var(box2.right), Equal, Var(windowWidth), Required)
-	addConstraint(solver, Var(box2.left), GreaterOrEqual, Var(box1.right), Required)
-	addConstraint(solver, Var(box1.left), LessOrEqual, Var(box1.right), Required)
-	addConstraint(solver, Var(box2.left), LessOrEqual, Var(box2.right), Required)
-	addConstraint(solver, Var(box1.right).MinusExpression(Var(box1.left)), Equal, Const(50), Weak)
-	addConstraint(solver, Var(box2.right).MinusExpression(Var(box2.left)), Equal, Const(100), Weak)
+	if err := solver.AddConstraints(
+		NewConstraint(Var(windowWidth), GreaterOrEqual, Const(0), Required),
+		NewConstraint(Var(box1.left), Equal, Const(0), Required),
+		NewConstraint(Var(box2.right), Equal, Var(windowWidth), Required),
+		NewConstraint(Var(box2.left), GreaterOrEqual, Var(box1.right), Required),
+		NewConstraint(Var(box1.left), LessOrEqual, Var(box1.right), Required),
+		NewConstraint(Var(box2.left), LessOrEqual, Var(box2.right), Required),
+		NewConstraint(Var(box1.right).MinusExpression(Var(box1.left)), Equal, Const(50), Weak),
+		NewConstraint(Var(box2.right).MinusExpression(Var(box2.left)), Equal, Const(100), Weak),
+	); err != nil {
+		t.Fatalf("AddConstraints error = %v, want nil", err)
+	}
 
 	if err := solver.AddEditVariable(windowWidth, Strong); err != nil {
 		t.Fatalf("AddEditVariable(windowWidth) error = %v, want nil", err)

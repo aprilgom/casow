@@ -42,43 +42,33 @@ type element struct {
 }
 
 func main() {
-	addConstraint := func(
-		solver *casow.Solver,
-		lhs casow.Expression,
-		op casow.RelationalOperator,
-		rhs casow.Expression,
-		strength casow.Strength,
-	) {
-		if err := solver.AddConstraint(casow.NewConstraint(lhs, op, rhs, strength)); err != nil {
-			panic(err)
-		}
-	}
-
 	windowWidth := casow.NewVariable()
 	box1 := element{left: casow.NewVariable(), right: casow.NewVariable()}
 	box2 := element{left: casow.NewVariable(), right: casow.NewVariable()}
 	solver := casow.NewSolver()
 
-	addConstraint(solver, casow.Var(windowWidth), casow.GreaterOrEqual, casow.Const(0), casow.Required)
-	addConstraint(solver, casow.Var(box1.left), casow.Equal, casow.Const(0), casow.Required)
-	addConstraint(solver, casow.Var(box2.right), casow.Equal, casow.Var(windowWidth), casow.Required)
-	addConstraint(solver, casow.Var(box2.left), casow.GreaterOrEqual, casow.Var(box1.right), casow.Required)
-	addConstraint(solver, casow.Var(box1.left), casow.LessOrEqual, casow.Var(box1.right), casow.Required)
-	addConstraint(solver, casow.Var(box2.left), casow.LessOrEqual, casow.Var(box2.right), casow.Required)
-	addConstraint(
-		solver,
-		casow.Var(box1.right).MinusExpression(casow.Var(box1.left)),
-		casow.Equal,
-		casow.Const(50),
-		casow.Weak,
-	)
-	addConstraint(
-		solver,
-		casow.Var(box2.right).MinusExpression(casow.Var(box2.left)),
-		casow.Equal,
-		casow.Const(100),
-		casow.Weak,
-	)
+	if err := solver.AddConstraints(
+		casow.NewConstraint(casow.Var(windowWidth), casow.GreaterOrEqual, casow.Const(0), casow.Required),
+		casow.NewConstraint(casow.Var(box1.left), casow.Equal, casow.Const(0), casow.Required),
+		casow.NewConstraint(casow.Var(box2.right), casow.Equal, casow.Var(windowWidth), casow.Required),
+		casow.NewConstraint(casow.Var(box2.left), casow.GreaterOrEqual, casow.Var(box1.right), casow.Required),
+		casow.NewConstraint(casow.Var(box1.left), casow.LessOrEqual, casow.Var(box1.right), casow.Required),
+		casow.NewConstraint(casow.Var(box2.left), casow.LessOrEqual, casow.Var(box2.right), casow.Required),
+		casow.NewConstraint(
+			casow.Var(box1.right).MinusExpression(casow.Var(box1.left)),
+			casow.Equal,
+			casow.Const(50),
+			casow.Weak,
+		),
+		casow.NewConstraint(
+			casow.Var(box2.right).MinusExpression(casow.Var(box2.left)),
+			casow.Equal,
+			casow.Const(100),
+			casow.Weak,
+		),
+	); err != nil {
+		panic(err)
+	}
 
 	if err := solver.AddEditVariable(windowWidth, casow.Strong); err != nil {
 		panic(err)
