@@ -145,6 +145,32 @@ func TestSolverRemoveConstraint_shouldRejectUnknownConstraint(t *testing.T) {
 	}
 }
 
+func TestSolverFetchChanges_shouldReportZero_whenLastConstraintRemoved(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+	constraint := NewConstraint(ExpressionFromVariable(x), Equal, ConstantExpression(100), Required)
+
+	if err := solver.AddConstraint(constraint); err != nil {
+		t.Fatalf("AddConstraint error = %v, want nil", err)
+	}
+	_ = solver.FetchChanges()
+
+	if err := solver.RemoveConstraint(constraint); err != nil {
+		t.Fatalf("RemoveConstraint error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) after RemoveConstraint = %v, want 0", got)
+	}
+
+	changes := solver.FetchChanges()
+	for _, change := range changes {
+		if change.Variable == x && change.Value == 0 {
+			return
+		}
+	}
+	t.Fatalf("FetchChanges after RemoveConstraint = %v, want Change{Variable: x, Value: 0}", changes)
+}
+
 func TestSolverAddConstraint_shouldRejectUnsatisfiableRequiredEqualities(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()

@@ -35,6 +35,7 @@ type Solver struct {
 	varForSymbol       map[symbol]Variable
 	publicChanges      []Change
 	changed            map[Variable]struct{}
+	zeroed             map[Variable]struct{}
 	shouldClearChanges bool
 	rows               map[symbol]row
 	infeasibleRows     []symbol
@@ -50,6 +51,7 @@ type solverStateSnapshot struct {
 	varForSymbol       map[symbol]Variable
 	publicChanges      []Change
 	changed            map[Variable]struct{}
+	zeroed             map[Variable]struct{}
 	shouldClearChanges bool
 	rows               map[symbol]row
 	infeasibleRows     []symbol
@@ -72,6 +74,7 @@ func NewSolver() *Solver {
 		varData:      make(map[Variable]varData),
 		varForSymbol: make(map[symbol]Variable),
 		changed:      make(map[Variable]struct{}),
+		zeroed:       make(map[Variable]struct{}),
 		rows:         make(map[symbol]row),
 		objective:    newRow(0),
 		idTick:       1,
@@ -172,6 +175,9 @@ func (s *Solver) RemoveConstraint(constraint Constraint) error {
 		}
 		data.count--
 		if data.count == 0 {
+			if data.value != 0 && !math.IsNaN(data.value) {
+				s.varZeroed(v)
+			}
 			delete(s.varForSymbol, data.symbol)
 			delete(s.varData, v)
 		} else {
@@ -245,6 +251,7 @@ func (s *Solver) Reset() {
 	clear(s.varData)
 	clear(s.varForSymbol)
 	clear(s.changed)
+	clear(s.zeroed)
 	clear(s.rows)
 	s.publicChanges = s.publicChanges[:0]
 	s.infeasibleRows = s.infeasibleRows[:0]
@@ -305,6 +312,14 @@ func (s *Solver) FetchChanges() []Change {
 	}
 
 	s.publicChanges = s.publicChanges[:0]
+	for v := range s.zeroed {
+		if _, ok := s.varData[v]; ok {
+			delete(s.zeroed, v)
+			continue
+		}
+		s.publicChanges = append(s.publicChanges, Change{Variable: v, Value: 0})
+		delete(s.zeroed, v)
+	}
 	for v := range s.changed {
 		data, ok := s.varData[v]
 		if !ok {
@@ -335,6 +350,7 @@ func (s *Solver) getVarSymbol(v Variable) symbol {
 		data = varData{value: math.NaN(), symbol: newSymbol}
 	}
 	data.count++
+	delete(s.zeroed, v)
 	s.varData[v] = data
 	return data.symbol
 }
@@ -662,6 +678,7 @@ func (s *Solver) snapshotState() solverStateSnapshot {
 		varForSymbol:       make(map[symbol]Variable, len(s.varForSymbol)),
 		publicChanges:      append([]Change(nil), s.publicChanges...),
 		changed:            make(map[Variable]struct{}, len(s.changed)),
+		zeroed:             make(map[Variable]struct{}, len(s.zeroed)),
 		shouldClearChanges: s.shouldClearChanges,
 		rows:               make(map[symbol]row, len(s.rows)),
 		infeasibleRows:     append([]symbol(nil), s.infeasibleRows...),
@@ -673,6 +690,7 @@ func (s *Solver) snapshotState() solverStateSnapshot {
 	maps.Copy(snapshot.varData, s.varData)
 	maps.Copy(snapshot.varForSymbol, s.varForSymbol)
 	maps.Copy(snapshot.changed, s.changed)
+	maps.Copy(snapshot.zeroed, s.zeroed)
 	for rowSymbol, current := range s.rows {
 		rowClone := cloneRow(&current)
 		snapshot.rows[rowSymbol] = rowClone
@@ -691,6 +709,7 @@ func (s *Solver) restoreState(snapshot solverStateSnapshot) {
 	s.varForSymbol = snapshot.varForSymbol
 	s.publicChanges = snapshot.publicChanges
 	s.changed = snapshot.changed
+	s.zeroed = snapshot.zeroed
 	s.shouldClearChanges = snapshot.shouldClearChanges
 	s.rows = snapshot.rows
 	s.infeasibleRows = snapshot.infeasibleRows
@@ -705,4 +724,13 @@ func (s *Solver) varChanged(v Variable) {
 		s.shouldClearChanges = false
 	}
 	s.changed[v] = struct{}{}
+}
+
+func (s *Solver) varZeroed(v Variable) {
+	if s.shouldClearChanges {
+		clear(s.changed)
+		clear(s.zeroed)
+		s.shouldClearChanges = false
+	}
+	s.zeroed[v] = struct{}{}
 }
