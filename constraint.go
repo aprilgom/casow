@@ -82,6 +82,8 @@ func constraintExpression(value any) Expression {
 		return ConstantExpression(float64(typed))
 	case uint64:
 		return ConstantExpression(float64(typed))
+	case uintptr:
+		return ConstantExpression(float64(typed))
 	default:
 		panic("unsupported constraint expression value")
 	}

@@ -57,6 +57,12 @@ func TestNewConstraint_shouldCanonicalizeRightHandSideRoles_whenGivenConstantVar
 			wantConstant: 6.0,
 		},
 		{
+			name:         "uintptr constant",
+			rhs:          uintptr(4),
+			wantTerms:    []Term{NewTerm(x, 1.0)},
+			wantConstant: 6.0,
+		},
+		{
 			name:         "variable",
 			rhs:          y,
 			wantTerms:    []Term{NewTerm(x, 1.0), NewTerm(y, -1.0)},
