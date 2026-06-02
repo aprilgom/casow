@@ -455,6 +455,53 @@ func TestSolverRemoveEditVariable_shouldClearEditVariable_whenEditVariableRemove
 	}
 }
 
+func TestSolverRemoveEditVariable_shouldReportZeroChange_whenSuggestedVariableBecomesUnconstrained(t *testing.T) {
+	solver := NewSolver()
+	x := NewVariable()
+
+	if err := solver.AddEditVariable(x, Strong); err != nil {
+		t.Fatalf("AddEditVariable error = %v, want nil", err)
+	}
+	if err := solver.SuggestValue(x, 42); err != nil {
+		t.Fatalf("SuggestValue error = %v, want nil", err)
+	}
+	changes := solver.FetchChanges()
+	seenSuggested := false
+	for _, change := range changes {
+		if change.Variable == x && change.Value == 42 {
+			seenSuggested = true
+		}
+	}
+	if !seenSuggested {
+		t.Fatalf("FetchChanges after SuggestValue = %v, want Change{Variable: x, Value: 42}", changes)
+	}
+
+	if err := solver.RemoveEditVariable(x); err != nil {
+		t.Fatalf("RemoveEditVariable error = %v, want nil", err)
+	}
+	if got := solver.GetValue(x); got != 0 {
+		t.Fatalf("GetValue(x) after RemoveEditVariable = %v, want 0", got)
+	}
+
+	changes = solver.FetchChanges()
+	zeroChanges := 0
+	for _, change := range changes {
+		if change.Variable == x && change.Value == 0 {
+			zeroChanges++
+		}
+	}
+	if zeroChanges != 1 {
+		t.Fatalf("FetchChanges after RemoveEditVariable = %v, want exactly one Change{Variable: x, Value: 0}", changes)
+	}
+
+	changes = solver.FetchChanges()
+	for _, change := range changes {
+		if change.Variable == x {
+			t.Fatalf("second FetchChanges after RemoveEditVariable = %v, want no change for x", changes)
+		}
+	}
+}
+
 func TestSolverSuggestValue_shouldRejectUnknownEditVariableAfterRemove(t *testing.T) {
 	solver := NewSolver()
 	x := NewVariable()
