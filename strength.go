@@ -21,13 +21,13 @@ var (
 )
 
 func NewStrength(value float64) Strength {
-	return Strength{value: clamp(value, 0, maxStrength)}
+	return Strength{value: clampStrengthValue(value, 0, maxStrength)}
 }
 
 func CreateStrength(strong, medium, weak, multiplier float64) Strength {
-	strongValue := clamp(strong*multiplier, 0, componentMax) * Strong.value
-	mediumValue := clamp(medium*multiplier, 0, componentMax) * Medium.value
-	weakValue := clamp(weak*multiplier, 0, componentMax) * Weak.value
+	strongValue := clampStrengthValue(strong*multiplier, 0, componentMax) * Strong.value
+	mediumValue := clampStrengthValue(medium*multiplier, 0, componentMax) * Medium.value
+	weakValue := clampStrengthValue(weak*multiplier, 0, componentMax) * Weak.value
 
 	return NewStrength(strongValue + mediumValue + weakValue)
 }
@@ -67,7 +67,7 @@ func (s Strength) Less(other Strength) bool {
 	return s.Compare(other) < 0
 }
 
-func clamp(value, minValue, maxValue float64) float64 {
+func clampStrengthValue(value, minValue, maxValue float64) float64 {
 	switch {
 	case value < minValue:
 		return minValue
