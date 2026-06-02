@@ -187,6 +187,12 @@ func (s *Solver) RemoveConstraint(constraint Constraint) error {
 	return nil
 }
 
+// HasConstraint reports whether constraint has been added to the solver.
+func (s *Solver) HasConstraint(constraint Constraint) bool {
+	_, ok := s.constraints[constraint]
+	return ok
+}
+
 // AddEditVariable marks variable as editable with strength.
 func (s *Solver) AddEditVariable(variable Variable, strength Strength) error {
 	if _, ok := s.edits[variable]; ok {
