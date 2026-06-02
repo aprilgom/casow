@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository is initialized as a Go module named `casow`. The current executable entry point is `cmd/casow/main.go`. Add new command entry points under `cmd/<name>/` and keep shared code in focused packages as the project grows. Put tests next to the package they exercise using Go's standard `*_test.go` naming.
+This repository is initialized as a Go module named `github.com/aprilgom/casow`. The current executable entry point is `cmd/casow/main.go`. Add new command entry points under `cmd/<name>/` and keep shared code in focused packages as the project grows. Put tests next to the package they exercise using Go's standard `*_test.go` naming.
 
 Avoid committing build outputs, local binaries, coverage files, or generated artifacts unless they are intentionally part of the source tree.
 
